@@ -3,9 +3,10 @@ for international hackathon event october 23-25
 
 <html><head></head><body><h1>PRD: NYC CVI Resource Connections Map</h1>
 <h2>1. Engagement Summary</h2>
-<p>Build an interactive resource map for KAVI Brooklyn and other community violence intervention (CVI) organizations across New York City.</p>
-<p>The map will convert the existing PDF-based “Connections Guide” into a searchable, geographic resource directory. It should help staff and community residents quickly find nearby services and support referrals between organizations.</p>
-<p><strong>Hackathon scope:</strong> Build the Stage 1 resource map.<br>
+<p>Build a first-version interactive resource map for KAVI Brooklyn and other community violence intervention (CVI) organizations across New York City.</p>
+<p>The map will turn the existing PDF-based “Connections Guide” into a searchable, geographic resource directory. It should help staff and community residents quickly find nearby services and support referrals between organizations.</p>
+<p><strong>Current status:</strong> The Connections Guide has been extracted into a dataset, geocoded, and published to ArcGIS Online, along with public library, health facility, and cooling center layers. A small number of resources still need addresses or are hotlines without a physical location.<br>
+<strong>Hackathon scope:</strong> Build the Stage 1 resource map on the published datasets, geocode the remaining resources, and add hotlines and other non-location resources to the directory.<br>
 <strong>Future scope:</strong> Add needs, public-data, referral, and impact-measurement layers.</p>
 <hr>
 <h2>2. Problem Statement</h2>
@@ -18,6 +19,7 @@ for international hackathon event october 23-25
 <li>Organizations serving neighboring catchment areas lack a shared, easy-to-use view of local resources.</li>
 <li>The work CVI organizations perform beyond violence prevention is not systematically visible through current success measures.</li>
 </ul>
+<p>The data foundation is now in place. The Connections Guide has been converted into a geocoded dataset and published to ArcGIS Online, alongside public library, health facility, and cooling center layers. The remaining gap is a usable, searchable map that brings these layers together for staff and residents, plus a way to surface the hotlines and the few resources that still lack addresses.</p>
 <hr>
 <h2>3. Users</h2>
 <h3>Primary users</h3>
