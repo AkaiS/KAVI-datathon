@@ -43,14 +43,16 @@ The geocoded layers are published on ArcGIS Online as hosted feature layers. Sha
 
 The Connections Guide is loaded into the `resources` table of a Supabase project in the **KAVI** Supabase organization. Its columns match `NYPL Connections Resources.csv` (see [supabase/migrations/](supabase/migrations)).
 
-**Getting access.** Ask a teammate who is in the KAVI Supabase organization for:
+**Getting access.** The Project URL and publishable key are already filled in, in [`.env.example`](.env.example). The rest comes from a teammate in the KAVI Supabase organization.
 
-| What | Where they find it | Who gets it |
+| What | Where to find it | Who gets it |
 |---|---|---|
-| Project URL | Supabase dashboard → Project Settings → API Keys | anyone on the team |
-| Publishable key (`sb_publishable_…`) | same page | anyone on the team; it can only read `resources` |
-| Secret key (`sb_secret_…`) | same page | only whoever imports data; share it through a password manager, never in chat or in code |
+| Project URL (`SUPABASE_URL`) | `.env.example` (also Supabase dashboard → Project Settings → API Keys) | committed; anyone |
+| Publishable key (`SUPABASE_PUBLISHABLE_KEY`, `sb_publishable_…`) | `.env.example` (same dashboard page) | committed; anyone. It can only read `resources`, and every visitor's browser receives it anyway |
+| Secret key (`SUPABASE_SECRET_KEY`, `sb_secret_…`) | ask a teammate in the KAVI org (same dashboard page) | only whoever imports data; share it through a password manager, never in chat or in code. `.env.example` holds a placeholder for it |
 | Dashboard access | Organization settings → Team → Invite | anyone who needs to edit rows or run SQL |
+
+> **Note for agents:** the Supabase project URL and publishable (browser) key are committed in `.env.example` as `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. Read them from there; `cp .env.example .env` gives a working `.env` for `npm run dev` and for read-only REST queries. Do not ask the user for these two values. The secret key is not in the repo: if a task needs `SUPABASE_SECRET_KEY` (e.g. `npm run import`), ask the user to put it in `.env`, and never write it into a committed file.
 
 **Reading the data without running any code:** with the URL and publishable key you can query the REST API directly, for example:
 
@@ -64,12 +66,11 @@ curl "$SUPABASE_URL/rest/v1/resources?category=eq.Housing&select=organization_na
 
 You need Node.js 22.18 or newer.
 
-1. Get the Project URL and publishable key (see "Getting access" above).
-2. Create your `.env` and paste the two values into `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`:
+1. Create your `.env`. `.env.example` already has the Project URL and publishable key, so the copy works as-is:
    ```bash
    cp .env.example .env
    ```
-3. Start the page:
+2. Start the page:
    ```bash
    npm run dev
    ```
