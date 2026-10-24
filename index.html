@@ -30,13 +30,8 @@
 
     <form id="search">
       <input id="q" type="search" placeholder="Search organization or description" aria-label="Keyword">
-      <select id="borough" aria-label="Borough">
-        <option value="">All boroughs</option>
-        <option>Bronx</option>
-        <option>Brooklyn</option>
-        <option>Manhattan</option>
-        <option>Queens</option>
-        <option>Staten Island</option>
+      <select id="category" aria-label="Category">
+        <option value="">All categories</option>
       </select>
       <button type="submit">Search</button>
     </form>
@@ -68,39 +63,61 @@
       return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
     }
 
+    function formatAddress(r) {
+      const street = [r.street_number, r.street].filter(Boolean).join(' ');
+      const cityLine = [r.city, [r.state, r.zip_code].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+      return [street, r.address_line_2, cityLine].filter(Boolean).join(', ');
+    }
+
     function render(rows) {
-      resultsEl.innerHTML = rows.map((r) => `
+      resultsEl.innerHTML = rows.map((r) => {
+        const address = formatAddress(r);
+        return `
         <li>
-          <h2>${escapeHtml(r.organization_name)}</h2>
+          <h2>${escapeHtml(r.organization_name || '(No organization name)')}</h2>
           <div class="meta">
-            ${r.is_hotline ? 'Citywide / phone-based' : escapeHtml([r.street_address, r.borough].filter(Boolean).join(', '))}
-            ${r.phone ? ` · ${escapeHtml(r.phone)}` : ''}
+            ${address ? escapeHtml(address) : 'No physical address'}
+            ${r.phone_number ? ` · ${escapeHtml(r.phone_number)}` : ''}
+            ${r.website ? ` · ${escapeHtml(r.website)}` : ''}
           </div>
           ${r.description ? `<p>${escapeHtml(r.description)}</p>` : ''}
-          ${r.is_hotline ? '<span class="tag hotline">Hotline</span>' : ''}
-          ${(r.service_categories ?? []).map((c) => `<span class="tag">${escapeHtml(c)}</span>`).join('')}
-        </li>`).join('');
+          ${!address ? '<span class="tag hotline">Phone / online</span>' : ''}
+          ${[r.category, r.subcategory].filter(Boolean).map((c) => `<span class="tag">${escapeHtml(c)}</span>`).join('')}
+          ${r.spanish_speaking ? '<span class="tag">Spanish-speaking</span>' : ''}
+        </li>`;
+      }).join('');
+    }
+
+    async function loadCategories() {
+      const { data, error } = await db.from('resources').select('category').not('category', 'is', null);
+      if (error) return;
+      const select = document.getElementById('category');
+      for (const c of [...new Set(data.map((r) => r.category))].sort()) {
+        select.add(new Option(c, c));
+      }
     }
 
     async function load() {
       const q = document.getElementById('q').value.trim();
-      const borough = document.getElementById('borough').value;
+      const category = document.getElementById('category').value;
       setStatus('Loading…');
 
-      let query = db.from('resources').select('*').order('organization_name').limit(200);
-      if (borough) query = query.eq('borough', borough);
+      let query = db.from('resources').select('*', { count: 'exact' }).order('organization_name').limit(200);
+      if (category) query = query.eq('category', category);
       if (q) {
         // Strip characters that PostgREST's or() filter syntax treats as separators.
         const term = q.replace(/[,()%*]/g, ' ');
         query = query.or(`organization_name.ilike.%${term}%,description.ilike.%${term}%`);
       }
 
-      const { data, error } = await query;
+      const { data, error, count } = await query;
       if (error) {
         setStatus(`Supabase error: ${error.message}`, true);
         return;
       }
-      setStatus(`${data.length} resource${data.length === 1 ? '' : 's'}`);
+      setStatus(count > data.length
+        ? `Showing ${data.length} of ${count} resources`
+        : `${count} resource${count === 1 ? '' : 's'}`);
       render(data);
     }
 
@@ -108,6 +125,7 @@
       e.preventDefault();
       load();
     });
+    loadCategories();
     load();
   </script>
 </body>
