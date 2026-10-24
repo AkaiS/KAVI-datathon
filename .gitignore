@@ -7,3 +7,6 @@ skills-lock.json
 .env
 config.js
 node_modules/
+
+# macOS Finder metadata
+.DS_Store

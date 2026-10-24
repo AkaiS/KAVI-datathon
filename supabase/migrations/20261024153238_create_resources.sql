@@ -1,5 +1,5 @@
 -- Resources from the Connections Guide (README section 8, "Suggested normalized fields").
--- Run once in the Supabase dashboard: SQL Editor -> New query -> paste -> Run.
+-- Apply with: supabase db push   (or paste into the dashboard SQL Editor).
 
 create table public.resources (
   id bigint generated always as identity primary key,
