@@ -70,7 +70,7 @@ interface Element {
 }
 
 async function main(): Promise<void> {
-  const out = process.argv[2] ?? join(import.meta.dirname, 'data', 'nyc_osm_resources.csv')
+  const out = process.argv[2] ?? join(import.meta.dirname, '..', 'data', 'nyc_osm_resources.csv')
   // The public server answers 429/502/504 when busy; back off and retry.
   let resp: Response | undefined
   for (let attempt = 0, waitS = 15; attempt < 5; attempt++, waitS *= 2) {

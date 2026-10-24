@@ -1,8 +1,8 @@
 # NYPL Connections → GeoJSON: data analysis
 
-Analysis of `scripts/data/nypl_connections_resources.geojson`, the output of
+Analysis of `data/nypl_connections_resources.geojson`, the output of
 [`nypl_connections_to_geojson.ts`](../nypl_connections_to_geojson.ts) run against
-`scripts/data/NYPL Connections Resources.csv` on 2026-10-25.
+`data/NYPL Connections Resources.csv` on 2026-10-25.
 
 Every number below is reproducible by running
 [`analyze_nypl_connections_location.py`](analyze_nypl_connections_location.py) (stdlib-only, no dependencies):

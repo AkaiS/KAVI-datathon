@@ -1,4 +1,4 @@
-// Transforms scripts/data/NYPL Connections Resources.csv into a GeoJSON that uses OSM's
+// Transforms data/NYPL Connections Resources.csv into a GeoJSON that uses OSM's
 // address-tagging convention (addr:housenumber, addr:street, addr:city, addr:state,
 // addr:postcode, addr:country — see https://wiki.openstreetmap.org/wiki/Key:addr). Every
 // original column is kept on each feature's properties; only the location fields are added.
@@ -20,7 +20,7 @@ import { dirname, join } from 'node:path'
 
 export const GEOCODE_ENDPOINT = 'https://geocoding.geo.census.gov/geocoder/locations/addressbatch'
 export const BENCHMARK = 'Public_AR_Current'
-const INPUT_CSV = join(import.meta.dirname, 'data', 'NYPL Connections Resources.csv')
+const INPUT_CSV = join(import.meta.dirname, '..', 'data', 'NYPL Connections Resources.csv')
 
 export type Record_ = Record<string, string>
 
@@ -183,7 +183,7 @@ export async function geocodeWithGeoSearch(rows: { id: number; street: string; c
 }
 
 async function main(): Promise<void> {
-  const out = process.argv[2] ?? join(import.meta.dirname, 'data', 'nypl_connections_resources.geojson')
+  const out = process.argv[2] ?? join(import.meta.dirname, '..', 'data', 'nypl_connections_resources.geojson')
 
   const [header, ...dataRows] = parseCsv(readFileSync(INPUT_CSV, 'utf8'))
   const records = dataRows.map((cols) => cleanZip(Object.fromEntries(header.map((h, i) => [h, cols[i] ?? '']))))

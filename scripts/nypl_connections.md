@@ -1,14 +1,14 @@
 # GeoJSON creation
 
-How `scripts/data/nypl_connections_resources.geojson` is built from
-`scripts/data/NYPL Connections Resources.csv`.
+How `data/nypl_connections_resources.geojson` is built from
+`data/NYPL Connections Resources.csv`.
 
 ```sh
-node scripts/nypl_connections_to_geojson.ts              # writes scripts/data/nypl_connections_resources.geojson
+node scripts/nypl_connections_to_geojson.ts              # writes data/nypl_connections_resources.geojson
 node --test scripts/tests/nypl_connections_to_geojson.test.ts   # runs the tests (no network calls)
 ```
 
-`scripts/data/NYPL Connections Resources.csv` is the raw Connections Guide export: one row per
+`data/NYPL Connections Resources.csv` is the raw Connections Guide export: one row per
 resource, with location split across `Street Number`, `Address Line 2`, `Street`, `City`, `State`,
 `Zip Code`, and no coordinates. This script (issue
 [#4](https://github.com/dssg-nyc/KAVI-datathon/issues/4)) turns those columns into the location

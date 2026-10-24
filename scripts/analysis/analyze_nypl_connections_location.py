@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Reproduces the numbers in scripts/analysis/nypl_connections_location_analysis.md.
 
-Reads scripts/data/nypl_connections_resources.geojson (the output of
+Reads data/nypl_connections_resources.geojson (the output of
 nypl_connections_to_geojson.ts) and prints: total entities, Census geocoder match counts,
 a per-state table, a per-city table, and density stats (densest grid cell, nearest-neighbor
 distances) computed from the matched points' coordinates.
@@ -14,7 +14,7 @@ import math
 from collections import Counter, defaultdict
 from pathlib import Path
 
-GEOJSON_PATH = Path(__file__).parent.parent / 'data' / 'nypl_connections_resources.geojson'
+GEOJSON_PATH = Path(__file__).parent.parent.parent / 'data' / 'nypl_connections_resources.geojson'
 GRID_CELL_DEG = 0.02  # ~2.2km lat x ~1.7km lon at NYC's latitude
 
 

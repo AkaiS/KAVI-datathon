@@ -6,8 +6,8 @@ A supplementary layer for the resource map: service locations in NYC that volunt
 clinics and hospitals are left out on purpose.
 
 ```sh
-node scripts/osm_resources_nyc.ts                # writes scripts/data/nyc_osm_resources.{csv,geojson}
-python3 -m http.server -d scripts 8000           # then open http://localhost:8000/map.html
+node scripts/osm_resources_nyc.ts                # writes data/nyc_osm_resources.{csv,geojson}
+python3 -m http.server 8000                      # then open http://localhost:8000/scripts/map.html
 ```
 
 The script needs Node 22.18 or later and has no dependencies. It runs one query against the free public
@@ -57,5 +57,5 @@ a phone number or website, and about 10% have opening hours.
 
 ## NYPL Connections → GeoJSON
 
-See [nypl_connections.md](nypl_connections.md) for how `scripts/data/nypl_connections_resources.geojson`
+See [nypl_connections.md](nypl_connections.md) for how `data/nypl_connections_resources.geojson`
 is built from the raw Connections Guide CSV.
