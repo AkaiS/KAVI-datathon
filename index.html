@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NYC CVI Resource Connections</title>
+  <style>
+    :root { --fg: #1a1a1a; --muted: #5c5c5c; --line: #ddd; --bg: #fff; --accent: #0b5cad; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: var(--fg); background: var(--bg); }
+    main { max-width: 900px; margin: 0 auto; padding: 16px; }
+    h1 { font-size: 1.5rem; margin: 0 0 12px; }
+    form { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    input, select, button { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; }
+    input { flex: 1 1 240px; }
+    button { background: var(--accent); color: #fff; border-color: var(--accent); cursor: pointer; }
+    #status { color: var(--muted); margin: 0 0 12px; }
+    #status.error { color: #b00020; }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
+    li h2 { font-size: 1.1rem; margin: 0 0 4px; }
+    .meta { color: var(--muted); font-size: 0.9rem; }
+    .tag { display: inline-block; font-size: 0.8rem; padding: 1px 8px; margin: 4px 4px 0 0; border-radius: 999px; background: #eef3fa; }
+    .tag.hotline { background: #fdf0e6; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>NYC CVI Resource Connections</h1>
+
+    <form id="search">
+      <input id="q" type="search" placeholder="Search organization or description" aria-label="Keyword">
+      <select id="borough" aria-label="Borough">
+        <option value="">All boroughs</option>
+        <option>Bronx</option>
+        <option>Brooklyn</option>
+        <option>Manhattan</option>
+        <option>Queens</option>
+        <option>Staten Island</option>
+      </select>
+      <button type="submit">Search</button>
+    </form>
+
+    <p id="status">Loading…</p>
+    <ul id="results"></ul>
+  </main>
+
+  <!-- config.js is generated from .env by `npm run dev`. It sets window.APP_CONFIG. -->
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
+  <script>
+    const statusEl = document.getElementById('status');
+    const resultsEl = document.getElementById('results');
+
+    function setStatus(text, isError = false) {
+      statusEl.textContent = text;
+      statusEl.classList.toggle('error', isError);
+    }
+
+    if (!window.APP_CONFIG) {
+      setStatus('config.js is missing. Copy .env.example to .env, fill it in, then run: npm run dev', true);
+      throw new Error('Missing window.APP_CONFIG');
+    }
+
+    const db = supabase.createClient(window.APP_CONFIG.SUPABASE_URL, window.APP_CONFIG.SUPABASE_PUBLISHABLE_KEY);
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+    }
+
+    function render(rows) {
+      resultsEl.innerHTML = rows.map((r) => `
+        <li>
+          <h2>${escapeHtml(r.organization_name)}</h2>
+          <div class="meta">
+            ${r.is_hotline ? 'Citywide / phone-based' : escapeHtml([r.street_address, r.borough].filter(Boolean).join(', '))}
+            ${r.phone ? ` · ${escapeHtml(r.phone)}` : ''}
+          </div>
+          ${r.description ? `<p>${escapeHtml(r.description)}</p>` : ''}
+          ${r.is_hotline ? '<span class="tag hotline">Hotline</span>' : ''}
+          ${(r.service_categories ?? []).map((c) => `<span class="tag">${escapeHtml(c)}</span>`).join('')}
+        </li>`).join('');
+    }
+
+    async function load() {
+      const q = document.getElementById('q').value.trim();
+      const borough = document.getElementById('borough').value;
+      setStatus('Loading…');
+
+      let query = db.from('resources').select('*').order('organization_name').limit(200);
+      if (borough) query = query.eq('borough', borough);
+      if (q) {
+        // Strip characters that PostgREST's or() filter syntax treats as separators.
+        const term = q.replace(/[,()%*]/g, ' ');
+        query = query.or(`organization_name.ilike.%${term}%,description.ilike.%${term}%`);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        setStatus(`Supabase error: ${error.message}`, true);
+        return;
+      }
+      setStatus(`${data.length} resource${data.length === 1 ? '' : 's'}`);
+      render(data);
+    }
+
+    document.getElementById('search').addEventListener('submit', (e) => {
+      e.preventDefault();
+      load();
+    });
+    load();
+  </script>
+</body>
+</html>

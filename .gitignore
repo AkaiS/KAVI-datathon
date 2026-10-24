@@ -2,3 +2,8 @@
 .claude/*
 skills-lock.json
 
+
+# Supabase credentials and the config.js generated from them
+.env
+config.js
+node_modules/

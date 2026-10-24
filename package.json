@@ -1,0 +1,12 @@
+{
+  "name": "kavi-resource-map",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=21.7"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "config": "node scripts/dev.mjs --config-only"
+  }
+}
