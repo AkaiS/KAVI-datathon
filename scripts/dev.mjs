@@ -6,16 +6,33 @@ import { extname, join, normalize, resolve, sep } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
 
+const SETUP_HELP = `
+To get the Supabase connection details:
+  1. Ask a teammate with access to the KAVI Supabase organization for the
+     Project URL and publishable key (Supabase dashboard -> Project Settings -> API Keys).
+  2. Put them in .env as SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.
+  3. Run npm run dev again.
+Never use the secret key (sb_secret_...) for these: config.js is sent to every visitor.
+Full steps: README.md, "Running the resource directory".`;
+
 try {
   process.loadEnvFile(join(root, '.env'));
 } catch {
-  console.error('Missing .env. Run: cp .env.example .env  and fill in your Supabase values.');
+  console.error(`No .env file found. Create one with: cp .env.example .env\n${SETUP_HELP}`);
   process.exit(1);
 }
 
 const { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } = process.env;
 if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-  console.error('.env must set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.');
+  console.error(`.env must set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.\n${SETUP_HELP}`);
+  process.exit(1);
+}
+if (SUPABASE_URL.includes('your-project-ref') || /^sb_publishable_x+$/.test(SUPABASE_PUBLISHABLE_KEY)) {
+  console.error(`.env still has the placeholder values from .env.example.\n${SETUP_HELP}`);
+  process.exit(1);
+}
+if (SUPABASE_PUBLISHABLE_KEY.startsWith('sb_secret_')) {
+  console.error(`SUPABASE_PUBLISHABLE_KEY holds a secret key. Use the publishable key (sb_publishable_...).\n${SETUP_HELP}`);
   process.exit(1);
 }
 

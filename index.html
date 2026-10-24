@@ -7,6 +7,7 @@
   <style>
     :root { --fg: #1a1a1a; --muted: #5c5c5c; --line: #ddd; --bg: #fff; --accent: #0b5cad; }
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
     body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: var(--fg); background: var(--bg); }
     main { max-width: 900px; margin: 0 auto; padding: 16px; }
     h1 { font-size: 1.5rem; margin: 0 0 12px; }
@@ -17,16 +18,40 @@
     #status { color: var(--muted); margin: 0 0 12px; }
     #status.error { color: #b00020; }
     ul { list-style: none; padding: 0; margin: 0; }
-    li { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
-    li h2 { font-size: 1.1rem; margin: 0 0 4px; }
+    #results li { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
+    #results li h2 { font-size: 1.1rem; margin: 0 0 4px; }
     .meta { color: var(--muted); font-size: 0.9rem; }
     .tag { display: inline-block; font-size: 0.8rem; padding: 1px 8px; margin: 4px 4px 0 0; border-radius: 999px; background: #eef3fa; }
     .tag.hotline { background: #fdf0e6; }
+    #setup-help { border: 1px solid #e6b800; background: #fffbea; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; }
+    #setup-help h2 { font-size: 1.1rem; margin: 0 0 6px; }
+    #setup-help ol { margin: 8px 0; padding-left: 20px; }
+    #setup-help code { background: #f3f3f3; padding: 1px 4px; border-radius: 4px; font-size: 0.9em; }
+    #setup-help .detail { color: var(--muted); font-size: 0.85rem; margin: 8px 0 0; word-break: break-word; }
   </style>
 </head>
 <body>
   <main>
     <h1>NYC CVI Resource Connections</h1>
+
+    <!-- Shown by showSetupHelp() when the page cannot reach the Supabase database. -->
+    <section id="setup-help" hidden>
+      <h2>Can't load resources</h2>
+      <p id="setup-reason"></p>
+      <p>To connect this page to the database:</p>
+      <ol>
+        <li>Ask a teammate with access to the <strong>KAVI</strong> Supabase organization for the project's
+          <strong>Project URL</strong> and <strong>publishable key</strong>. They are in the Supabase dashboard under
+          Project Settings &rarr; API Keys. Ask to be invited to the organization if you need the dashboard yourself.</li>
+        <li>In the repo folder, run <code>cp .env.example .env</code> and paste the two values into
+          <code>SUPABASE_URL</code> and <code>SUPABASE_PUBLISHABLE_KEY</code>.</li>
+        <li>Run <code>npm run dev</code> and open <code>http://localhost:5173</code>. Do not open
+          <code>index.html</code> directly from your file browser.</li>
+      </ol>
+      <p>Never use the secret key (<code>sb_secret_&hellip;</code>) here: this page sends its key to every visitor.
+        Full steps are in the README under "Running the resource directory".</p>
+      <p class="detail" id="setup-detail"></p>
+    </section>
 
     <form id="search">
       <input id="q" type="search" placeholder="Search organization or description" aria-label="Keyword">
@@ -52,12 +77,42 @@
       statusEl.classList.toggle('error', isError);
     }
 
-    if (!window.APP_CONFIG) {
-      setStatus('config.js is missing. Copy .env.example to .env, fill it in, then run: npm run dev', true);
-      throw new Error('Missing window.APP_CONFIG');
+    function showSetupHelp(reason, detail = '') {
+      document.getElementById('setup-reason').textContent = reason;
+      document.getElementById('setup-detail').textContent = detail ? `Technical detail: ${detail}` : '';
+      document.getElementById('setup-help').hidden = false;
+      document.getElementById('search').hidden = true;
+      statusEl.hidden = true;
+      resultsEl.innerHTML = '';
     }
 
-    const db = supabase.createClient(window.APP_CONFIG.SUPABASE_URL, window.APP_CONFIG.SUPABASE_PUBLISHABLE_KEY);
+    // Turns a Supabase error into a sentence a teammate can act on.
+    function explainError(error) {
+      const message = error?.message ?? String(error);
+      if (/failed to fetch|networkerror|load failed/i.test(message)) {
+        return 'The page could not reach the Supabase project. SUPABASE_URL in .env may be wrong, or you may be offline.';
+      }
+      if (/invalid api key|no api key|jwt|unauthorized/i.test(message)) {
+        return 'Supabase rejected the key. SUPABASE_PUBLISHABLE_KEY in .env is missing, mistyped or from a different project.';
+      }
+      if (/could not find the table|does not exist/i.test(message)) {
+        return 'The Supabase project has no resources table yet. Someone with database access needs to run supabase db push.';
+      }
+      return null;
+    }
+
+    const config = window.APP_CONFIG;
+    const isPlaceholder = (value) => !value || /your-project-ref|^sb_publishable_x+$/.test(value);
+    if (!config) {
+      showSetupHelp('This page has no Supabase connection details: config.js was not found. config.js is created from your .env file when you run npm run dev.');
+      throw new Error('Missing window.APP_CONFIG');
+    }
+    if (isPlaceholder(config.SUPABASE_URL) || isPlaceholder(config.SUPABASE_PUBLISHABLE_KEY)) {
+      showSetupHelp('Your .env file still has the placeholder values from .env.example.');
+      throw new Error('Placeholder Supabase config');
+    }
+
+    const db = supabase.createClient(config.SUPABASE_URL, config.SUPABASE_PUBLISHABLE_KEY);
 
     function escapeHtml(value) {
       return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -112,7 +167,9 @@
 
       const { data, error, count } = await query;
       if (error) {
-        setStatus(`Supabase error: ${error.message}`, true);
+        const reason = explainError(error);
+        if (reason) showSetupHelp(reason, error.message);
+        else setStatus(`Supabase error: ${error.message}`, true);
         return;
       }
       setStatus(count > data.length

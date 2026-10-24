@@ -1,6 +1,28 @@
 # KAVI-datathon
 for international hackathon event october 23-25
 
+## Running the resource directory
+
+`index.html` is a search page for the Connections Guide resources. It reads them from a Supabase database (the `resources` table in the **KAVI** Supabase organization). You need Node.js 22 or newer.
+
+1. **Get the Supabase connection details.** Ask a teammate with access to the KAVI Supabase organization for the **Project URL** and the **publishable key** (Supabase dashboard → Project Settings → API Keys). Ask them to invite you to the organization if you need the dashboard yourself.
+2. **Create your `.env`:**
+   ```bash
+   cp .env.example .env
+   ```
+   Paste the two values into `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`.
+3. **Start the page:**
+   ```bash
+   npm run dev
+   ```
+   Open http://localhost:5173. Opening `index.html` straight from your file browser does not work, because `config.js` is only created by `npm run dev`.
+
+If the page says **"Can't load resources"**, it names the problem: missing `.env`, placeholder values, a wrong URL, a wrong key, or a missing table.
+
+**Keys:** the publishable key (`sb_publishable_…`) is safe to share in team chat; RLS lets it read the table and nothing else. The secret key (`sb_secret_…`) can change or delete everything. Only the person importing data needs it, in `SUPABASE_SECRET_KEY`, and it should be shared through a password manager.
+
+**Loading data into a new Supabase project:** `supabase link --project-ref <ref>`, then `supabase db push`, then `node scripts/import-csv.mjs "path/to/NYPL Connections Resources.csv"` (add `--dry-run` to check the file first, `--replace` to re-import).
+
 <html><head></head><body><h1>PRD: NYC CVI Resource Connections Map</h1>
 <h2>1. Engagement Summary</h2>
 <p>Build a first-version interactive resource map for KAVI Brooklyn and other community violence intervention (CVI) organizations across New York City.</p>
