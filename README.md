@@ -72,7 +72,7 @@ The page needs no setup: `config.js` already points it at the Supabase project. 
 npm run dev
 ```
 
-Then open http://localhost:5173. Any static server works too, e.g. `python3 -m http.server 5173` from the repo root. The same server also serves the OSM map at http://localhost:5173/scripts/osm/map.html. The page can be hosted as-is on any static host (GitHub Pages, Netlify, Cloudflare Pages) with no build step.
+Then open http://localhost:5173. Any static server works too, e.g. `python3 -m http.server 5173 --bind 127.0.0.1` from the repo root. The same server also serves the OSM map at http://localhost:5173/scripts/osm/map.html. The page can be hosted as-is on any static host (GitHub Pages, Netlify, Cloudflare Pages) with no build step.
 
 If the page says **"Can't load resources"**, it names the problem: `config.js` missing, a wrong URL, a wrong key, or a missing table.
 

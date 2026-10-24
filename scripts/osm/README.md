@@ -7,7 +7,7 @@ clinics and hospitals are left out on purpose.
 
 ```sh
 npm run osm      # node scripts/osm/osm_resources_nyc.ts; writes data/nyc_osm_resources.{csv,geojson}
-python3 -m http.server 8000   # from the repo root; then open http://localhost:8000/scripts/osm/map.html
+python3 -m http.server 8000 --bind 127.0.0.1   # from the repo root; then open http://localhost:8000/scripts/osm/map.html
 ```
 
 The script needs Node 22.18 or later and has no dependencies. It runs one query against the free public

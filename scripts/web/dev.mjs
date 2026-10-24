@@ -1,7 +1,7 @@
-// Serves the repo as static files on http://localhost:5173 (PORT overrides it).
+// Serves the repo as static files on http://localhost:5173 (PORT overrides it), to this computer only.
 // Usage: npm run dev
 // index.html reads its Supabase connection from the committed config.js, so no .env or build step is needed.
-// Any static server works too, e.g. python3 -m http.server 5173 from the repo root.
+// Any static server works too, e.g. python3 -m http.server 5173 --bind 127.0.0.1 from the repo root.
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize, resolve, sep } from 'node:path';
@@ -23,6 +23,8 @@ const types = {
 const isDotPath = (file) => file.slice(root.length).split(sep).some((part) => part.startsWith('.'));
 
 const port = Number(process.env.PORT) || 5173;
+// Listen on the loopback address only, so other machines on the same network (e.g. shared wifi) cannot reach it.
+const host = '127.0.0.1';
 createServer(async (req, res) => {
   const path = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
   const file = normalize(join(root, path === '/' ? 'index.html' : path));
@@ -36,4 +38,4 @@ createServer(async (req, res) => {
   } catch {
     res.writeHead(404).end('Not found');
   }
-}).listen(port, () => console.log(`Serving on http://localhost:${port}`));
+}).listen(port, host, () => console.log(`Serving on http://localhost:${port} (this computer only)`));
