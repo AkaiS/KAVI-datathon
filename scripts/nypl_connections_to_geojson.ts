@@ -3,13 +3,17 @@
 // addr:postcode, addr:country — see https://wiki.openstreetmap.org/wiki/Key:addr). Every
 // original column is kept on each feature's properties; only the location fields are added.
 //
-// Coordinates come from the Census Bureau's free batch geocoder (no API key, one request for
-// the whole file). Rows with no usable address, or that the geocoder can't match, are kept with
-// geometry: null rather than dropped, since the PRD wants hotlines and address-less resources
-// surfaced too.
+// Coordinates try NYC's own GeoSearch geocoder first (building-level, no API key), falling back
+// to the Census Bureau's free batch geocoder for whatever GeoSearch can't confidently place.
+// GeoSearch has no real concept of "outside NYC" — for an address it can't find, it silently
+// returns the nearest same-named NYC street instead of nothing, so a GeoSearch result is only
+// trusted when the zip code it returns matches the input's. Anything that fails that check
+// (including every address genuinely outside NYC) falls through to Census, same as before. Rows
+// with no usable address, or that neither geocoder can match, are kept with geometry: null rather
+// than dropped, since the PRD wants hotlines and address-less resources surfaced too.
 //
 //   node scripts/nypl_connections_to_geojson.ts [out.geojson]      (Node >= 22.18, no dependencies)
-//   node --test scripts/nypl_connections_to_geojson.test.ts        (runs the tests)
+//   node --test scripts/tests/nypl_connections_to_geojson.test.ts  (runs the tests)
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -51,10 +55,25 @@ export interface MatchResult {
   matched: boolean
   lon?: number
   lat?: number
+  source?: 'geosearch' | 'census'
 }
 
 export function isGeocodable(r: Record_): boolean {
   return !!r['Street'].trim() && !!(r['City'].trim() || r['Zip Code'].trim())
+}
+
+// Two zip-code typos in the source CSV, confirmed against the published ArcGIS layer
+// (NYPL_Connections_merge) during PR review. Keyed by Organization Name — stable and unique for
+// both rows — rather than rewriting the raw CSV, so the delivered file stays byte-for-byte as
+// received and this fix stays visible/testable in code.
+const ZIP_FIXES: Record<string, string> = {
+  'THE BEDFORD-STUYVESANT FAMILY HEALTH CENTER - 4 (Wellness Center Program)': '11216', // was 12116
+  'CENTER FOR JUSTICE INNOVATION (CJI)—THE STATEN ISLAND JUSTICE CENTER': '10301', // was 10304
+}
+
+export function cleanZip(r: Record_): Record_ {
+  const fix = ZIP_FIXES[r['Organization Name']]
+  return fix ? { ...r, 'Zip Code': fix } : r
 }
 
 export function buildBatchCsv(ids: number[], rows: { street: string; city: string; state: string; zip: string }[]): string {
@@ -85,11 +104,12 @@ export function toFeature(r: Record_, result: MatchResult | undefined) {
   if (Object.keys(addr).length) addr['addr:country'] = 'US'
 
   const geocode_match = !result ? 'not_attempted' : result.matched ? 'matched' : 'unmatched'
+  const geocode_source = result?.matched ? (result.source ?? '') : ''
 
   return {
     type: 'Feature',
     geometry: result?.matched ? { type: 'Point', coordinates: [result.lon, result.lat] } : null,
-    properties: { ...r, ...addr, geocode_match },
+    properties: { ...r, ...addr, geocode_match, geocode_source },
   }
 }
 
@@ -110,33 +130,95 @@ export async function geocode(ids: number[], rows: { street: string; city: strin
   return parseGeocodeResponse(await resp!.text())
 }
 
+export const GEOSEARCH_ENDPOINT = 'https://geosearch.planninglabs.nyc/v2/search'
+export const GEOSEARCH_CONCURRENCY = 5
+
+export interface GeoSearchFeature {
+  geometry: { coordinates: [number, number] }
+  properties: { postalcode?: string }
+}
+
+// GeoSearch always returns something for a plausible-looking query, even for addresses nowhere
+// near NYC — it falls back to the nearest same-named NYC street rather than no match (e.g.
+// "Kingston, NY 12401" comes back as a Brooklyn street with zip 11213). The only reliable signal
+// that a result is real is that the zip it returns matches the zip we asked for.
+export function pickGeoSearchMatch(features: GeoSearchFeature[], zip: string): { lon: number; lat: number } | null {
+  const zip5 = zip.trim().slice(0, 5)
+  if (!zip5) return null
+  const hit = features.find((f) => (f.properties.postalcode ?? '').trim().slice(0, 5) === zip5)
+  if (!hit) return null
+  const [lon, lat] = hit.geometry.coordinates
+  return { lon, lat }
+}
+
+export async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  let next = 0
+  async function worker(): Promise<void> {
+    while (next < items.length) {
+      const i = next++
+      results[i] = await fn(items[i])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return results
+}
+
+export async function geocodeWithGeoSearch(rows: { id: number; street: string; city: string; state: string; zip: string }[]): Promise<Map<number, MatchResult>> {
+  const results = new Map<number, MatchResult>()
+  await mapWithConcurrency(rows, GEOSEARCH_CONCURRENCY, async (row) => {
+    const text = [row.street, row.city, row.state, row.zip].filter(Boolean).join(', ')
+    let data: { features?: GeoSearchFeature[] } | undefined
+    try {
+      const resp = await fetch(`${GEOSEARCH_ENDPOINT}?text=${encodeURIComponent(text)}&size=1`)
+      if (resp.ok) data = await resp.json()
+      else console.error(`GeoSearch HTTP ${resp.status} for row ${row.id}`)
+    } catch (err) {
+      console.error(`GeoSearch request failed for row ${row.id}: ${(err as Error).message}`)
+    }
+    const match = data?.features ? pickGeoSearchMatch(data.features, row.zip) : null
+    if (match) results.set(row.id, { matched: true, lon: match.lon, lat: match.lat, source: 'geosearch' })
+  })
+  return results
+}
+
 async function main(): Promise<void> {
   const out = process.argv[2] ?? join(import.meta.dirname, 'data', 'nypl_connections_resources.geojson')
 
   const [header, ...dataRows] = parseCsv(readFileSync(INPUT_CSV, 'utf8'))
-  const records = dataRows.map((cols) => Object.fromEntries(header.map((h, i) => [h, cols[i] ?? ''])))
+  const records = dataRows.map((cols) => cleanZip(Object.fromEntries(header.map((h, i) => [h, cols[i] ?? '']))))
 
   const geocodable = records.map((r, i) => ({ i, r })).filter(({ r }) => isGeocodable(r))
+  const addressRows = geocodable.map(({ i, r }) => ({
+    id: i,
+    street: [r['Street Number'], r['Street']].filter(Boolean).join(' '),
+    city: r['City'],
+    state: r['State'],
+    zip: r['Zip Code'],
+  }))
 
-  const results = geocodable.length
-    ? await geocode(
-        geocodable.map(({ i }) => i),
-        geocodable.map(({ r }) => ({
-          street: [r['Street Number'], r['Street']].filter(Boolean).join(' '),
-          city: r['City'],
-          state: r['State'],
-          zip: r['Zip Code'],
-        })),
-      )
+  // Try NYC GeoSearch first (see pickGeoSearchMatch for why its result has to be zip-validated);
+  // whatever it can't confidently place — including every address genuinely outside NYC — falls
+  // through to the Census batch geocoder, as before.
+  const geoSearchResults = addressRows.length ? await geocodeWithGeoSearch(addressRows) : new Map<number, MatchResult>()
+  const remaining = addressRows.filter((row) => !geoSearchResults.get(row.id)?.matched)
+
+  const censusResults = remaining.length
+    ? await geocode(remaining.map((r) => r.id), remaining.map((r) => ({ street: r.street, city: r.city, state: r.state, zip: r.zip })))
     : new Map<number, MatchResult>()
 
+  const results = new Map<number, MatchResult>(geoSearchResults)
+  for (const [id, r] of censusResults) results.set(id, { ...r, source: 'census' })
+
   const features = records.map((r, i) => toFeature(r, results.get(i)))
-  const matched = features.filter((f) => f.properties.geocode_match === 'matched').length
+  const matched = features.filter((f) => f.properties.geocode_match === 'matched')
   const unmatched = features.filter((f) => f.properties.geocode_match === 'unmatched').length
+  const viaGeoSearch = matched.filter((f) => f.properties.geocode_source === 'geosearch').length
+  const viaCensus = matched.filter((f) => f.properties.geocode_source === 'census').length
 
   mkdirSync(dirname(out), { recursive: true })
   writeFileSync(out, JSON.stringify({ type: 'FeatureCollection', features }))
-  console.log(`${records.length} resources (${matched} matched, ${unmatched} unmatched, ${records.length - matched - unmatched} not attempted) -> ${out}`)
+  console.log(`${records.length} resources (${matched.length} matched [${viaGeoSearch} via GeoSearch, ${viaCensus} via Census], ${unmatched} unmatched, ${records.length - matched.length - unmatched} not attempted) -> ${out}`)
 }
 
 if (process.argv[1] === import.meta.filename) {

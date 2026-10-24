@@ -4,11 +4,15 @@ import { describe, test, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   buildBatchCsv,
+  cleanZip,
   csvCell,
   geocode,
+  geocodeWithGeoSearch,
   isGeocodable,
+  mapWithConcurrency,
   parseCsv,
   parseGeocodeResponse,
+  pickGeoSearchMatch,
   toFeature,
   BENCHMARK,
   type Record_,
@@ -99,6 +103,33 @@ describe('isGeocodable', () => {
   })
 })
 
+describe('cleanZip', () => {
+  // Confirmed against the published ArcGIS layer during PR review (review.md): this row's
+  // zip is a typo that would otherwise send the wrong zip to both geocoders.
+  test('fixes the known Bedford-Stuyvesant Family Health Center zip typo', () => {
+    const r = cleanZip(record({
+      'Organization Name': 'THE BEDFORD-STUYVESANT FAMILY HEALTH CENTER - 4 (Wellness Center Program)',
+      'Zip Code': '12116',
+    }))
+    assert.equal(r['Zip Code'], '11216')
+  })
+
+  // Same, for the second row review.md flagged.
+  test('fixes the known Staten Island Justice Center zip typo', () => {
+    const r = cleanZip(record({
+      'Organization Name': 'CENTER FOR JUSTICE INNOVATION (CJI)—THE STATEN ISLAND JUSTICE CENTER',
+      'Zip Code': '10304',
+    }))
+    assert.equal(r['Zip Code'], '10301')
+  })
+
+  // Any row that isn't one of the two known-bad ones must pass through unchanged.
+  test('leaves every other row untouched', () => {
+    const r = record({ 'Organization Name': 'SOME OTHER ORG', 'Zip Code': '10304' })
+    assert.equal(cleanZip(r)['Zip Code'], '10304')
+  })
+})
+
 describe('buildBatchCsv', () => {
   // Each row must carry the caller's id (so results can be matched back up) and quote any
   // field that itself contains a comma (e.g. "Troy, Rensselaer").
@@ -143,11 +174,11 @@ describe('parseGeocodeResponse', () => {
 
 describe('toFeature', () => {
   // When every address column is present and the geocoder matched, the feature should carry
-  // the full set of OSM addr:* tags plus a Point geometry.
+  // the full set of OSM addr:* tags, a Point geometry, and the geocoder that resolved it.
   test('builds addr:* tags from the present address columns', () => {
     const f = toFeature(
       record({ 'Street Number': '31', Street: 'Albany Avenue', City: 'Kingston', State: 'NY', 'Zip Code': '12401' }),
-      { matched: true, lon: -74.0, lat: 41.9 },
+      { matched: true, lon: -74.0, lat: 41.9, source: 'census' },
     )
     assert.equal(f.properties['addr:housenumber'], '31')
     assert.equal(f.properties['addr:street'], 'Albany Avenue')
@@ -156,6 +187,7 @@ describe('toFeature', () => {
     assert.equal(f.properties['addr:postcode'], '12401')
     assert.equal(f.properties['addr:country'], 'US')
     assert.equal(f.properties.geocode_match, 'matched')
+    assert.equal(f.properties.geocode_source, 'census')
     assert.deepEqual(f.geometry, { type: 'Point', coordinates: [-74.0, 41.9] })
   })
 
@@ -165,6 +197,7 @@ describe('toFeature', () => {
     const f = toFeature(record({}), undefined)
     for (const key of Object.keys(f.properties)) assert.ok(!key.startsWith('addr:'))
     assert.equal(f.properties.geocode_match, 'not_attempted')
+    assert.equal(f.properties.geocode_source, '')
     assert.equal(f.geometry, null)
   })
 
@@ -173,6 +206,7 @@ describe('toFeature', () => {
   test('marks an address that failed to geocode as unmatched with null geometry', () => {
     const f = toFeature(record({ Street: 'Box 188', City: 'Yaphank' }), { matched: false })
     assert.equal(f.properties.geocode_match, 'unmatched')
+    assert.equal(f.properties.geocode_source, '')
     assert.equal(f.geometry, null)
   })
 
@@ -245,5 +279,111 @@ describe('geocode', () => {
       geocode([0], [{ street: '1 Main St', city: 'Troy', state: 'NY', zip: '12180' }]),
       /HTTP 400.*bad request/s,
     )
+  })
+})
+
+describe('pickGeoSearchMatch', () => {
+  // The real, happy-path case: GeoSearch's top result is at the address we asked for.
+  test('returns coordinates when a feature\'s postalcode matches the input zip', () => {
+    const match = pickGeoSearchMatch(
+      [{ geometry: { coordinates: [-74.003463, 40.713036] }, properties: { postalcode: '10007' } }],
+      '10007',
+    )
+    assert.deepEqual(match, { lon: -74.003463, lat: 40.713036 })
+  })
+
+  // GeoSearch has no concept of "outside NYC": asking it about a Kingston, NY address gets back
+  // a Brooklyn street of the same name with a completely different zip (11213 vs 12401) — this
+  // is the exact fallback behavior that makes the zip check necessary.
+  test('rejects a fallback match whose zip does not match (address outside NYC)', () => {
+    const match = pickGeoSearchMatch(
+      [{ geometry: { coordinates: [-73.93931, 40.675917] }, properties: { postalcode: '11213' } }],
+      '12401',
+    )
+    assert.equal(match, null)
+  })
+
+  // Some rows have a street and city but no zip at all; there's nothing to validate against,
+  // so GeoSearch is never trusted for them even if it returns something.
+  test('rejects when there is no zip to validate against', () => {
+    const match = pickGeoSearchMatch(
+      [{ geometry: { coordinates: [-74, 40.7] }, properties: { postalcode: '10007' } }],
+      '',
+    )
+    assert.equal(match, null)
+  })
+
+  // A zip+4 on either side shouldn't break the comparison — only the first 5 digits matter.
+  test('compares only the first 5 digits of the zip', () => {
+    const match = pickGeoSearchMatch(
+      [{ geometry: { coordinates: [-74, 40.7] }, properties: { postalcode: '10007-1234' } }],
+      '10007',
+    )
+    assert.deepEqual(match, { lon: -74, lat: 40.7 })
+  })
+
+  test('returns null when nothing in the result set matches', () => {
+    assert.equal(pickGeoSearchMatch([], '10007'), null)
+  })
+})
+
+describe('mapWithConcurrency', () => {
+  // Every item must be processed, and results must land at the same index as their input
+  // regardless of how fast each one resolves.
+  test('returns results in input order', async () => {
+    const results = await mapWithConcurrency([3, 1, 2], 2, async (n) => {
+      await new Promise((r) => setTimeout(r, n))
+      return n * 10
+    })
+    assert.deepEqual(results, [30, 10, 20])
+  })
+
+  // The whole reason this exists: never have more than `limit` requests in flight at once
+  // against a shared public API with no documented batch endpoint.
+  test('never runs more than the given limit at once', async () => {
+    let inFlight = 0
+    let maxInFlight = 0
+    await mapWithConcurrency([1, 2, 3, 4, 5, 6], 2, async () => {
+      inFlight++
+      maxInFlight = Math.max(maxInFlight, inFlight)
+      await new Promise((r) => setTimeout(r, 1))
+      inFlight--
+    })
+    assert.ok(maxInFlight <= 2, `expected at most 2 concurrent, saw ${maxInFlight}`)
+  })
+})
+
+describe('geocodeWithGeoSearch', () => {
+  const realFetch = globalThis.fetch
+  afterEach(() => { globalThis.fetch = realFetch })
+
+  // A validated match should be tagged with its source, so coordinate provenance is auditable.
+  test('records a validated match with source "geosearch"', async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      features: [{ geometry: { coordinates: [-74.003463, 40.713036] }, properties: { postalcode: '10007' } }],
+    }))) as typeof fetch
+
+    const results = await geocodeWithGeoSearch([{ id: 0, street: '1 Centre St', city: 'New York', state: 'NY', zip: '10007' }])
+    assert.deepEqual(results.get(0), { matched: true, lon: -74.003463, lat: 40.713036, source: 'geosearch' })
+  })
+
+  // An unvalidated (zip-mismatched) result must not appear in the map at all, so the caller's
+  // "remaining" filter correctly sends this row on to the Census fallback.
+  test('leaves no entry when the result fails zip validation', async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      features: [{ geometry: { coordinates: [-73.93931, 40.675917] }, properties: { postalcode: '11213' } }],
+    }))) as typeof fetch
+
+    const results = await geocodeWithGeoSearch([{ id: 0, street: '31 Albany Avenue', city: 'Kingston', state: 'NY', zip: '12401' }])
+    assert.equal(results.has(0), false)
+  })
+
+  // A network failure on one row must not throw or block the others — it should just fall
+  // through to Census like any other unresolved row.
+  test('treats a failed request as unresolved rather than throwing', async () => {
+    globalThis.fetch = (async () => { throw new Error('network down') }) as typeof fetch
+
+    const results = await geocodeWithGeoSearch([{ id: 0, street: '1 Centre St', city: 'New York', state: 'NY', zip: '10007' }])
+    assert.equal(results.has(0), false)
   })
 })
