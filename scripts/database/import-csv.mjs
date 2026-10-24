@@ -2,15 +2,16 @@
 // The secret key bypasses RLS, so this script must only ever run locally, never in the browser.
 //
 // Usage:
-//   node scripts/import-csv.mjs <path-to-csv> [--dry-run] [--replace]
-//     --dry-run  parse and map the CSV, print a summary, insert nothing
-//     --replace  delete every existing row in public.resources before inserting
+//   node scripts/database/import-csv.mjs [path-to-csv] [--dry-run] [--replace]
+//     path-to-csv  defaults to data/NYPL Connections Resources.csv
+//     --dry-run    parse and map the CSV, print a summary, insert nothing
+//     --replace    delete every existing row in public.resources before inserting
 // Without --replace the script refuses to run when the table already has rows, so a second
 // run cannot duplicate the data.
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
-const root = resolve(import.meta.dirname, '..');
+const root = resolve(import.meta.dirname, '..', '..');
 
 // CSV header -> public.resources column (see supabase/migrations/*_reshape_resources_to_match_csv.sql).
 const TEXT_COLUMNS = {
@@ -37,13 +38,9 @@ const YES_NO_COLUMNS = {
 const BATCH_SIZE = 500;
 
 const args = process.argv.slice(2);
-const csvPath = args.find((a) => !a.startsWith('--'));
+const csvPath = args.find((a) => !a.startsWith('--')) ?? join(root, 'data', 'NYPL Connections Resources.csv');
 const dryRun = args.includes('--dry-run');
 const replace = args.includes('--replace');
-if (!csvPath) {
-  console.error('Usage: node scripts/import-csv.mjs <path-to-csv> [--dry-run] [--replace]');
-  process.exit(1);
-}
 
 // RFC 4180 parser: quoted fields may contain commas, newlines and "" escapes.
 function parseCsv(text) {

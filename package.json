@@ -3,10 +3,12 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=21.7"
+    "node": ">=22.18"
   },
   "scripts": {
-    "dev": "node scripts/dev.mjs",
-    "config": "node scripts/dev.mjs --config-only"
+    "dev": "node scripts/web/dev.mjs",
+    "config": "node scripts/web/dev.mjs --config-only",
+    "import": "node scripts/database/import-csv.mjs",
+    "osm": "node scripts/osm/osm_resources_nyc.ts"
   }
 }
