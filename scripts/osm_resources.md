@@ -57,5 +57,5 @@ a phone number or website, and about 10% have opening hours.
 
 ## NYPL Connections → GeoJSON
 
-See [GEOJSON_CREATION.md](GEOJSON_CREATION.md) for how `scripts/data/nypl_connections_resources.geojson`
+See [nypl_connections.md](nypl_connections.md) for how `scripts/data/nypl_connections_resources.geojson`
 is built from the raw Connections Guide CSV.
