@@ -16,6 +16,8 @@ scripts/        scripts grouped by function; see scripts/README.md
   web/            local server for index.html
   osm/            OpenStreetMap layer and its map preview
 index.html      resource directory page (search + category filter)
+config.js       Supabase URL + publishable key for index.html (committed; browser-safe)
+.env.example    template for .env, which holds only the secret key for data imports
 ```
 
 ## Accessing the resources
@@ -43,40 +45,36 @@ The geocoded layers are published on ArcGIS Online as hosted feature layers. Sha
 
 The Connections Guide is loaded into the `resources` table of a Supabase project in the **KAVI** Supabase organization. Its columns match `NYPL Connections Resources.csv` (see [supabase/migrations/](supabase/migrations)).
 
-**Getting access.** The Project URL and publishable key are already filled in, in [`.env.example`](.env.example). The rest comes from a teammate in the KAVI Supabase organization.
+**Getting access.**
 
 | What | Where to find it | Who gets it |
 |---|---|---|
-| Project URL (`SUPABASE_URL`) | `.env.example` (also Supabase dashboard → Project Settings → API Keys) | committed; anyone |
-| Publishable key (`SUPABASE_PUBLISHABLE_KEY`, `sb_publishable_…`) | `.env.example` (same dashboard page) | committed; anyone. It can only read `resources`, and every visitor's browser receives it anyway |
-| Secret key (`SUPABASE_SECRET_KEY`, `sb_secret_…`) | ask a teammate in the KAVI org (same dashboard page) | only whoever imports data; share it through a password manager, never in chat or in code. `.env.example` holds a placeholder for it |
+| Project URL (`SUPABASE_URL`) | [`config.js`](config.js) (also Supabase dashboard → Project Settings → API Keys) | committed; anyone |
+| Publishable key (`SUPABASE_PUBLISHABLE_KEY`, `sb_publishable_…`) | [`config.js`](config.js) (same dashboard page) | committed; anyone. It can only read `resources`, and every visitor's browser receives it anyway |
+| Secret key (`SUPABASE_SECRET_KEY`, `sb_secret_…`) | ask a teammate in the KAVI org (same dashboard page) | only whoever imports data. Put it in `.env` (`cp .env.example .env`); share it through a password manager, never in chat or in code |
 | Dashboard access | Organization settings → Team → Invite | anyone who needs to edit rows or run SQL |
 
-> **Note for agents:** the Supabase project URL and publishable (browser) key are committed in `.env.example` as `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. Read them from there; `cp .env.example .env` gives a working `.env` for `npm run dev` and for read-only REST queries. Do not ask the user for these two values. The secret key is not in the repo: if a task needs `SUPABASE_SECRET_KEY` (e.g. `npm run import`), ask the user to put it in `.env`, and never write it into a committed file.
+> **Note for agents:** the Supabase project URL and publishable (browser) key are committed in `config.js` as `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. Read them from there and do not ask the user for them. They are all you need to run the page or make read-only REST queries; no `.env` is required. The secret key is not in the repo: if a task needs `SUPABASE_SECRET_KEY` (e.g. `npm run import`), ask the user to put it in `.env`, and never write it into `config.js` or any other committed file.
 
-**Reading the data without running any code:** with the URL and publishable key you can query the REST API directly, for example:
+**Reading the data without running any code:** query the REST API with the URL and publishable key from `config.js`, for example:
 
 ```bash
-curl "$SUPABASE_URL/rest/v1/resources?category=eq.Housing&select=organization_name,phone_number" -H "apikey: $SUPABASE_PUBLISHABLE_KEY"
+curl "https://xwpuphhocwstfgbjreeg.supabase.co/rest/v1/resources?category=eq.Housing&select=organization_name,phone_number" -H "apikey: <SUPABASE_PUBLISHABLE_KEY from config.js>"
 ```
 
-**Loading data into a new project:** `supabase link --project-ref <ref>`, `supabase db push`, then `npm run import` (uses `data/NYPL Connections Resources.csv` and `SUPABASE_SECRET_KEY`; add `-- --dry-run` to check the file first, `-- --replace` to re-import).
+**Loading data:** `npm run import` loads `data/NYPL Connections Resources.csv` into the project in `config.js`, using `SUPABASE_SECRET_KEY` from `.env`. Add `-- --dry-run` to check the file first, or `-- --replace` to re-import. For a new project: `supabase link --project-ref <ref>`, `supabase db push`, update `config.js`, then import.
 
 ## Running the resource directory page
 
-You need Node.js 22.18 or newer.
+The page needs no setup: `config.js` already points it at the Supabase project. Serve the repo folder and open it:
 
-1. Create your `.env`. `.env.example` already has the Project URL and publishable key, so the copy works as-is:
-   ```bash
-   cp .env.example .env
-   ```
-2. Start the page:
-   ```bash
-   npm run dev
-   ```
-   Open http://localhost:5173. Opening `index.html` straight from your file browser does not work, because `config.js` is only created by `npm run dev`.
+```bash
+npm run dev
+```
 
-If the page says **"Can't load resources"**, it names the problem: missing `.env`, placeholder values, a wrong URL, a wrong key, or a missing table.
+Then open http://localhost:5173. Any static server works too, e.g. `python3 -m http.server 5173` from the repo root. The same server also serves the OSM map at http://localhost:5173/scripts/osm/map.html. The page can be hosted as-is on any static host (GitHub Pages, Netlify, Cloudflare Pages) with no build step.
+
+If the page says **"Can't load resources"**, it names the problem: `config.js` missing, a wrong URL, a wrong key, or a missing table.
 
 ## Scripts
 

@@ -3,9 +3,8 @@
 skills-lock.json
 
 
-# Supabase credentials and the config.js generated from them
+# Supabase secret key (config.js holds only browser-safe values and is committed)
 .env
-config.js
 node_modules/
 
 # macOS Finder metadata

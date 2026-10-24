@@ -117,14 +117,20 @@ if (dryRun) {
 try {
   process.loadEnvFile(join(root, '.env'));
 } catch {
-  console.error('Missing .env. Run: cp .env.example .env  and fill in your Supabase values.');
+  console.error('Missing .env. Run: cp .env.example .env  and paste in SUPABASE_SECRET_KEY.');
   process.exit(1);
 }
-const { SUPABASE_URL, SUPABASE_SECRET_KEY } = process.env;
-if (!SUPABASE_URL || !SUPABASE_SECRET_KEY || /^sb_secret_x+$/.test(SUPABASE_SECRET_KEY)) {
-  console.error('.env must set SUPABASE_URL and a real SUPABASE_SECRET_KEY.');
+const { SUPABASE_SECRET_KEY } = process.env;
+if (!SUPABASE_SECRET_KEY || /^sb_secret_x+$/.test(SUPABASE_SECRET_KEY)) {
+  console.error('.env must set a real SUPABASE_SECRET_KEY (Supabase dashboard -> Project Settings -> API Keys).');
   process.exit(1);
 }
+
+// The project URL lives in config.js, the same file the browser uses, so it is written down once.
+// SUPABASE_URL in .env overrides it, e.g. to import into a different project.
+const browserConfig = JSON.parse((await readFile(join(root, 'config.js'), 'utf8')).match(/\{[\s\S]*\}/)[0]);
+const SUPABASE_URL = process.env.SUPABASE_URL || browserConfig.SUPABASE_URL;
+console.log(`Importing into ${SUPABASE_URL}`);
 
 const endpoint = `${SUPABASE_URL}/rest/v1/resources`;
 const headersFor = (extra = {}) => ({ apikey: SUPABASE_SECRET_KEY, 'Content-Type': 'application/json', ...extra });

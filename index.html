@@ -38,17 +38,16 @@
     <section id="setup-help" hidden>
       <h2>Can't load resources</h2>
       <p id="setup-reason"></p>
-      <p>To connect this page to the database:</p>
+      <p>The Supabase connection is in <code>config.js</code>, next to <code>index.html</code>. To fix it:</p>
       <ol>
-        <li>Ask a teammate with access to the <strong>KAVI</strong> Supabase organization for the project's
-          <strong>Project URL</strong> and <strong>publishable key</strong>. They are in the Supabase dashboard under
-          Project Settings &rarr; API Keys. Ask to be invited to the organization if you need the dashboard yourself.</li>
-        <li>In the repo folder, run <code>cp .env.example .env</code> and paste the two values into
-          <code>SUPABASE_URL</code> and <code>SUPABASE_PUBLISHABLE_KEY</code>.</li>
-        <li>Run <code>npm run dev</code> and open <code>http://localhost:5173</code>. Do not open
-          <code>index.html</code> directly from your file browser.</li>
+        <li>Make sure you have the latest code (<code>git pull</code>), which includes <code>config.js</code>.</li>
+        <li>Serve the repo folder over HTTP, for example with <code>npm run dev</code>, and open
+          <code>http://localhost:5173</code>.</li>
+        <li>If the Supabase project has changed, update <code>SUPABASE_URL</code> and
+          <code>SUPABASE_PUBLISHABLE_KEY</code> in <code>config.js</code>. A teammate in the <strong>KAVI</strong>
+          Supabase organization can find both in the Supabase dashboard under Project Settings &rarr; API Keys.</li>
       </ol>
-      <p>Never use the secret key (<code>sb_secret_&hellip;</code>) here: this page sends its key to every visitor.
+      <p>Never put the secret key (<code>sb_secret_&hellip;</code>) in <code>config.js</code>: this page sends it to every visitor.
         Full steps are in README.md under "Running the resource directory page".</p>
       <p class="detail" id="setup-detail"></p>
     </section>
@@ -65,7 +64,7 @@
     <ul id="results"></ul>
   </main>
 
-  <!-- config.js is generated from .env by `npm run dev`. It sets window.APP_CONFIG. -->
+  <!-- config.js (committed) sets window.APP_CONFIG: the Supabase URL and publishable key. -->
   <script src="config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
   <script>
@@ -90,10 +89,10 @@
     function explainError(error) {
       const message = error?.message ?? String(error);
       if (/failed to fetch|networkerror|load failed/i.test(message)) {
-        return 'The page could not reach the Supabase project. SUPABASE_URL in .env may be wrong, or you may be offline.';
+        return 'The page could not reach the Supabase project. SUPABASE_URL in config.js may be wrong, or you may be offline.';
       }
       if (/invalid api key|no api key|jwt|unauthorized/i.test(message)) {
-        return 'Supabase rejected the key. SUPABASE_PUBLISHABLE_KEY in .env is missing, mistyped or from a different project.';
+        return 'Supabase rejected the key. SUPABASE_PUBLISHABLE_KEY in config.js is missing, mistyped or from a different project.';
       }
       if (/could not find the table|does not exist/i.test(message)) {
         return 'The Supabase project has no resources table yet. Someone with database access needs to run supabase db push.';
@@ -102,14 +101,13 @@
     }
 
     const config = window.APP_CONFIG;
-    const isPlaceholder = (value) => !value || /your-project-ref|^sb_publishable_x+$/.test(value);
-    if (!config) {
-      showSetupHelp('This page has no Supabase connection details: config.js was not found. config.js is created from your .env file when you run npm run dev.');
+    if (!config?.SUPABASE_URL || !config?.SUPABASE_PUBLISHABLE_KEY) {
+      showSetupHelp('This page has no Supabase connection details: config.js is missing or does not set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.');
       throw new Error('Missing window.APP_CONFIG');
     }
-    if (isPlaceholder(config.SUPABASE_URL) || isPlaceholder(config.SUPABASE_PUBLISHABLE_KEY)) {
-      showSetupHelp('Your .env file still has the placeholder values from .env.example.');
-      throw new Error('Placeholder Supabase config');
+    if (config.SUPABASE_PUBLISHABLE_KEY.startsWith('sb_secret_')) {
+      showSetupHelp('config.js holds a secret key. Replace it with the publishable key (sb_publishable_…) and rotate the secret key in the Supabase dashboard, because it has been exposed.');
+      throw new Error('Secret key in config.js');
     }
 
     const db = supabase.createClient(config.SUPABASE_URL, config.SUPABASE_PUBLISHABLE_KEY);
