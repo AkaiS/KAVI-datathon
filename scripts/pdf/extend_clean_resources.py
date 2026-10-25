@@ -178,7 +178,7 @@ def main():
         # but a name found inside another listing's text would get that listing's services.
         texts.append(row["description"] + (" " + own["listing_text"] if own and method != "in_listing_text" else ""))
 
-    # Description tags, only for rows still without a service type (for now). A row in
+    # Description tags, for every row. A row in
     # reviewed_service_types.csv takes its reviewed types; the keyword types stay alongside.
     by_id = {r["resource_id"]: r for r in out}
 
