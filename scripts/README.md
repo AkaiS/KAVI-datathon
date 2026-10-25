@@ -9,7 +9,7 @@ Scripts are grouped by what they work on. Run them from the repo root. The Node 
 | `web/` | `dev.mjs` | Serves the repo as static files on http://localhost:5173 (`index.html`, `scripts/osm/map.html`), reachable from this computer only. Never serves dotfiles such as `.env`. | `npm run dev` |
 | `osm/` | `osm_resources_nyc.ts` | Downloads NYC service locations from OpenStreetMap into `data/nyc_osm_resources.csv` and `.geojson`. | `npm run osm` |
 | `osm/` | `map.html` | Map preview of the OSM layer. | see [`osm/README.md`](osm/README.md) |
-| (top level) | `nypl_connections_to_geojson.ts` | Geocodes `data/NYPL Connections Resources.csv` (NYC GeoSearch, then Census) into `data/nypl_connections_resources.geojson`. See [`md/nypl_connections.md`](../md/nypl_connections.md). | `node scripts/nypl_connections_to_geojson.ts` |
+| (top level) | `nypl_connections_to_geojson.ts` | Geocodes `data/NYPL Connections Resources.csv` (NYC GeoSearch, then Census) into `data/nypl_connections_resources.geojson`. See [`nypl_connections.md`](nypl_connections.md). | `node scripts/nypl_connections_to_geojson.ts` |
 | `prototype/` | `build_reach_transit.py` | PROTOTYPE, throwaway. Downloads the MTA subway and bus GTFS and the MTA Subway Stations ADA flags into `data/prototype/reach_transit_PROTOTYPE.json`, the stops and routes `reach-prototype.html` searches. | `python3 scripts/prototype/build_reach_transit.py` |
 | `tests/` | `nypl_connections_to_geojson.test.ts` | Unit tests for the script above; no network calls. | `node --test scripts/tests/nypl_connections_to_geojson.test.ts` |
 | `tests/` | `finder_filter.test.mjs` | Unit tests for the finder's filtering (`finder/filter.js`, `finder/resources.js`); no network calls. | `node --test scripts/tests/finder_filter.test.mjs` |
