@@ -8,6 +8,7 @@ import {
   csvCell,
   geocode,
   geocodeWithGeoSearch,
+  houseNumbersMatch,
   isGeocodable,
   mapWithConcurrency,
   parseCsv,
@@ -146,11 +147,12 @@ describe('buildBatchCsv', () => {
 })
 
 describe('parseGeocodeResponse', () => {
-  // A "Match" row carries coordinates as a single "lon,lat" column that needs splitting.
-  test('reads coordinates out of a matched row', () => {
+  // A "Match" row carries coordinates as a single "lon,lat" column that needs splitting, and
+  // the address Census actually matched, kept for provenance.
+  test('reads coordinates and the matched address out of a matched row', () => {
     const csv = '"1","350 Fifth Avenue, New York, NY, 10118","Match","Exact","350 5TH AVE, NEW YORK, NY, 10118","-73.985075577551,40.747850846857","59653473","L"'
     const results = parseGeocodeResponse(csv)
-    assert.deepEqual(results.get(1), { matched: true, lon: -73.985075577551, lat: 40.747850846857 })
+    assert.deepEqual(results.get(1), { matched: true, lon: -73.985075577551, lat: 40.747850846857, matchedAddress: '350 5TH AVE, NEW YORK, NY, 10118' })
   })
 
   // A "No_Match" row (e.g. a PO box like "Box 188") has only 3 columns and no coordinates.
@@ -189,6 +191,16 @@ describe('toFeature', () => {
     assert.equal(f.properties.geocode_match, 'matched')
     assert.equal(f.properties.geocode_source, 'census')
     assert.deepEqual(f.geometry, { type: 'Point', coordinates: [-74.0, 41.9] })
+  })
+
+  // Every point says which address the geocoder actually placed, and whether it needs review.
+  test('carries the matched address and review note', () => {
+    const f = toFeature(
+      record({ 'Street Number': '45', Street: 'Suffolk Street', City: 'New York', State: 'NY', 'Zip Code': '10002' }),
+      { matched: true, lon: -73.98, lat: 40.71, source: 'census', matchedAddress: '45 SUFFOLK ST, NEW YORK, NY, 10002', review: 'Confirm the address.' },
+    )
+    assert.equal(f.properties.geocode_matched_address, '45 SUFFOLK ST, NEW YORK, NY, 10002')
+    assert.equal(f.properties.geocode_review, 'Confirm the address.')
   })
 
   // A hotline/online-only row (no address columns, never sent to the geocoder) must not
@@ -286,10 +298,11 @@ describe('pickGeoSearchMatch', () => {
   // The real, happy-path case: GeoSearch's top result is at the address we asked for.
   test('returns coordinates when a feature\'s postalcode matches the input zip', () => {
     const match = pickGeoSearchMatch(
-      [{ geometry: { coordinates: [-74.003463, 40.713036] }, properties: { postalcode: '10007' } }],
+      [{ geometry: { coordinates: [-74.003463, 40.713036] }, properties: { postalcode: '10007', housenumber: '1', label: '1 CENTER STREET, New York, NY, USA' } }],
       '10007',
+      '1',
     )
-    assert.deepEqual(match, { lon: -74.003463, lat: 40.713036 })
+    assert.deepEqual(match, { lon: -74.003463, lat: 40.713036, houseNumberMatches: true, label: '1 CENTER STREET, New York, NY, USA' })
   })
 
   // GeoSearch has no concept of "outside NYC": asking it about a Kingston, NY address gets back
@@ -316,14 +329,60 @@ describe('pickGeoSearchMatch', () => {
   // A zip+4 on either side shouldn't break the comparison — only the first 5 digits matter.
   test('compares only the first 5 digits of the zip', () => {
     const match = pickGeoSearchMatch(
-      [{ geometry: { coordinates: [-74, 40.7] }, properties: { postalcode: '10007-1234' } }],
+      [{ geometry: { coordinates: [-74, 40.7] }, properties: { postalcode: '10007-1234', housenumber: '1' } }],
       '10007',
+      '1',
     )
-    assert.deepEqual(match, { lon: -74, lat: 40.7 })
+    assert.deepEqual(match, { lon: -74, lat: 40.7, houseNumberMatches: true, label: '' })
   })
 
   test('returns null when nothing in the result set matches', () => {
     assert.equal(pickGeoSearchMatch([], '10007'), null)
+  })
+
+  // Inside NYC, GeoSearch's fallback lands on the right street and zip but a different building:
+  // "581 Rogers Avenue" came back as 1038 Rogers Avenue, 1.4 km away. The point is still returned
+  // so the caller can fall back to it, but flagged as not matching the house number.
+  test('flags a same-zip result with a different house number', () => {
+    const match = pickGeoSearchMatch(
+      [{ geometry: { coordinates: [-73.95, 40.64] }, properties: { postalcode: '11226', housenumber: '1038', label: '1038 ROGERS AVENUE, Brooklyn, NY, USA' } }],
+      '11226',
+      '581',
+    )
+    assert.equal(match?.houseNumberMatches, false)
+    assert.equal(match?.label, '1038 ROGERS AVENUE, Brooklyn, NY, USA')
+  })
+})
+
+describe('houseNumbersMatch', () => {
+  test('matches identical numbers, including Queens-style hyphenated ones', () => {
+    assert.equal(houseNumbersMatch('581', '581'), true)
+    assert.equal(houseNumbersMatch('29-76', '29-76'), true)
+  })
+
+  test('rejects a different building on the same street', () => {
+    assert.equal(houseNumbersMatch('581', '1038'), false)
+    assert.equal(houseNumbersMatch('180', '80'), false)
+    assert.equal(houseNumbersMatch('16-16', '16-00'), false)
+  })
+
+  test('ignores letter suffixes', () => {
+    assert.equal(houseNumbersMatch('76-A', '76'), true)
+    assert.equal(houseNumbersMatch('150D', '150'), true)
+    assert.equal(houseNumbersMatch('201A', '201'), true)
+  })
+
+  // The source CSV writes some ranges with an en dash ("3807–3809 Church Avenue").
+  test('accepts either end of a range, written with a hyphen or an en dash', () => {
+    assert.equal(houseNumbersMatch('400-430', '400'), true)
+    assert.equal(houseNumbersMatch('104-106', '106'), true)
+    assert.equal(houseNumbersMatch('3807–3809', '3807'), true)
+    assert.equal(houseNumbersMatch('3807–3809', '3419'), false)
+  })
+
+  test('never matches when either side is blank', () => {
+    assert.equal(houseNumbersMatch('', '1'), false)
+    assert.equal(houseNumbersMatch('1', ''), false)
   })
 })
 
@@ -358,13 +417,25 @@ describe('geocodeWithGeoSearch', () => {
   afterEach(() => { globalThis.fetch = realFetch })
 
   // A validated match should be tagged with its source, so coordinate provenance is auditable.
-  test('records a validated match with source "geosearch"', async () => {
+  test('records a validated match with source "geosearch" and the matched address', async () => {
     globalThis.fetch = (async () => new Response(JSON.stringify({
-      features: [{ geometry: { coordinates: [-74.003463, 40.713036] }, properties: { postalcode: '10007' } }],
+      features: [{ geometry: { coordinates: [-74.003463, 40.713036] }, properties: { postalcode: '10007', housenumber: '1', label: '1 CENTER STREET, New York, NY, USA' } }],
     }))) as typeof fetch
 
-    const results = await geocodeWithGeoSearch([{ id: 0, street: '1 Centre St', city: 'New York', state: 'NY', zip: '10007' }])
-    assert.deepEqual(results.get(0), { matched: true, lon: -74.003463, lat: 40.713036, source: 'geosearch' })
+    const results = await geocodeWithGeoSearch([{ id: 0, houseNumber: '1', street: '1 Centre St', city: 'New York', state: 'NY', zip: '10007' }])
+    assert.deepEqual(results.get(0), { matched: true, lon: -74.003463, lat: 40.713036, source: 'geosearch', matchedAddress: '1 CENTER STREET, New York, NY, USA' })
+  })
+
+  // A wrong-house-number result must not count as matched, so the row still goes to Census, but
+  // the point is kept in case Census can't place it either.
+  test('keeps a wrong-house-number result as unmatched, with its point', async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      features: [{ geometry: { coordinates: [-73.95, 40.64] }, properties: { postalcode: '11226', housenumber: '1038', label: '1038 ROGERS AVENUE, Brooklyn, NY, USA' } }],
+    }))) as typeof fetch
+
+    const results = await geocodeWithGeoSearch([{ id: 0, houseNumber: '581', street: '581 Rogers Avenue', city: 'Brooklyn', state: 'NY', zip: '11226' }])
+    assert.equal(results.get(0)?.matched, false)
+    assert.equal(results.get(0)?.matchedAddress, '1038 ROGERS AVENUE, Brooklyn, NY, USA')
   })
 
   // An unvalidated (zip-mismatched) result must not appear in the map at all, so the caller's

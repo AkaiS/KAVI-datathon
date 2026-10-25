@@ -56,6 +56,11 @@ export interface MatchResult {
   lon?: number
   lat?: number
   source?: 'geosearch' | 'census'
+  // The address the geocoder actually placed (GeoSearch's label, Census's matched address), so a
+  // reader can see where a point came from without re-running the geocoder.
+  matchedAddress?: string
+  // Set when the point is kept but not confirmed at building level; see REVIEW_NOTES and main().
+  review?: string
 }
 
 export function isGeocodable(r: Record_): boolean {
@@ -76,6 +81,14 @@ export function cleanZip(r: Record_): Record_ {
   return fix ? { ...r, 'Zip Code': fix } : r
 }
 
+// Rows whose point is kept but couldn't be confirmed during PR review. 45 Suffolk Street has no
+// tax lot in PLUTO and GeoSearch can't find it either; Census places it on the street, but
+// nothing confirms the building. Keyed by Organization Name, like ZIP_FIXES.
+export const REVIEW_NOTES: Record<string, string> = {
+  'Chinese-American Planning Council':
+    '45 Suffolk Street is not in PLUTO or NYC GeoSearch; location is a street-level estimate. Confirm the address with the organization.',
+}
+
 export function buildBatchCsv(ids: number[], rows: { street: string; city: string; state: string; zip: string }[]): string {
   return ids.map((id, i) => {
     const r = rows[i]
@@ -89,7 +102,7 @@ export function parseGeocodeResponse(csvText: string): Map<number, MatchResult> 
     const id = Number(cols[0])
     if (cols[2] !== 'Match') { results.set(id, { matched: false }); continue }
     const [lon, lat] = cols[5].split(',').map(Number)
-    results.set(id, { matched: true, lon, lat })
+    results.set(id, { matched: true, lon, lat, matchedAddress: cols[4] })
   }
   return results
 }
@@ -105,11 +118,13 @@ export function toFeature(r: Record_, result: MatchResult | undefined) {
 
   const geocode_match = !result ? 'not_attempted' : result.matched ? 'matched' : 'unmatched'
   const geocode_source = result?.matched ? (result.source ?? '') : ''
+  const geocode_matched_address = result?.matched ? (result.matchedAddress ?? '') : ''
+  const geocode_review = result?.matched ? (result.review ?? '') : ''
 
   return {
     type: 'Feature',
     geometry: result?.matched ? { type: 'Point', coordinates: [result.lon, result.lat] } : null,
-    properties: { ...r, ...addr, geocode_match, geocode_source },
+    properties: { ...r, ...addr, geocode_match, geocode_source, geocode_matched_address, geocode_review },
   }
 }
 
@@ -135,20 +150,52 @@ export const GEOSEARCH_CONCURRENCY = 5
 
 export interface GeoSearchFeature {
   geometry: { coordinates: [number, number] }
-  properties: { postalcode?: string }
+  properties: { postalcode?: string; housenumber?: string; label?: string }
+}
+
+export interface GeoSearchMatch {
+  lon: number
+  lat: number
+  // false when GeoSearch returned a different building on the right street and zip
+  houseNumberMatches: boolean
+  label: string
 }
 
 // GeoSearch always returns something for a plausible-looking query, even for addresses nowhere
 // near NYC — it falls back to the nearest same-named NYC street rather than no match (e.g.
 // "Kingston, NY 12401" comes back as a Brooklyn street with zip 11213). The only reliable signal
 // that a result is real is that the zip it returns matches the zip we asked for.
-export function pickGeoSearchMatch(features: GeoSearchFeature[], zip: string): { lon: number; lat: number } | null {
+//
+// Inside NYC the same fallback returns a different building on the right street and zip (e.g.
+// "581 Rogers Avenue" comes back as 1038 Rogers Avenue, 1.4 km away), so the house number has to
+// match too. A zip-only match is still returned, flagged with houseNumberMatches: false.
+export function pickGeoSearchMatch(features: GeoSearchFeature[], zip: string, houseNumber = ''): GeoSearchMatch | null {
   const zip5 = zip.trim().slice(0, 5)
   if (!zip5) return null
   const hit = features.find((f) => (f.properties.postalcode ?? '').trim().slice(0, 5) === zip5)
   if (!hit) return null
   const [lon, lat] = hit.geometry.coordinates
-  return { lon, lat }
+  return {
+    lon,
+    lat,
+    houseNumberMatches: houseNumbersMatch(houseNumber, hit.properties.housenumber ?? ''),
+    label: hit.properties.label ?? '',
+  }
+}
+
+function normalizeHouseNumber(n: string): string {
+  return n.toUpperCase().replace(/[–—]/g, '-').replace(/\s+/g, '').replace(/-?[A-Z]+$/, '')
+}
+
+// "76-A" matches 76, "150D" matches 150, and a range like "400-430" matches either end. A
+// Queens-style number like "29-76" only matches itself, because GeoSearch returns those whole.
+export function houseNumbersMatch(input: string, returned: string): boolean {
+  const a = normalizeHouseNumber(input)
+  const b = normalizeHouseNumber(returned)
+  if (!a || !b) return false
+  if (a === b) return true
+  const range = a.match(/^(\d+)-(\d+)$/)
+  return !!range && !b.includes('-') && (b === range[1] || b === range[2])
 }
 
 export async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -164,7 +211,9 @@ export async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (i
   return results
 }
 
-export async function geocodeWithGeoSearch(rows: { id: number; street: string; city: string; state: string; zip: string }[]): Promise<Map<number, MatchResult>> {
+// A row whose GeoSearch result has the wrong house number comes back with matched: false (so it
+// still goes to Census) but keeps the GeoSearch point, which main() uses only if Census also fails.
+export async function geocodeWithGeoSearch(rows: { id: number; houseNumber?: string; street: string; city: string; state: string; zip: string }[]): Promise<Map<number, MatchResult>> {
   const results = new Map<number, MatchResult>()
   await mapWithConcurrency(rows, GEOSEARCH_CONCURRENCY, async (row) => {
     const text = [row.street, row.city, row.state, row.zip].filter(Boolean).join(', ')
@@ -176,8 +225,10 @@ export async function geocodeWithGeoSearch(rows: { id: number; street: string; c
     } catch (err) {
       console.error(`GeoSearch request failed for row ${row.id}: ${(err as Error).message}`)
     }
-    const match = data?.features ? pickGeoSearchMatch(data.features, row.zip) : null
-    if (match) results.set(row.id, { matched: true, lon: match.lon, lat: match.lat, source: 'geosearch' })
+    const match = data?.features ? pickGeoSearchMatch(data.features, row.zip, row.houseNumber) : null
+    if (match) {
+      results.set(row.id, { matched: match.houseNumberMatches, lon: match.lon, lat: match.lat, source: 'geosearch', matchedAddress: match.label })
+    }
   })
   return results
 }
@@ -191,15 +242,16 @@ async function main(): Promise<void> {
   const geocodable = records.map((r, i) => ({ i, r })).filter(({ r }) => isGeocodable(r))
   const addressRows = geocodable.map(({ i, r }) => ({
     id: i,
+    houseNumber: r['Street Number'],
     street: [r['Street Number'], r['Street']].filter(Boolean).join(' '),
     city: r['City'],
     state: r['State'],
     zip: r['Zip Code'],
   }))
 
-  // Try NYC GeoSearch first (see pickGeoSearchMatch for why its result has to be zip-validated);
-  // whatever it can't confidently place — including every address genuinely outside NYC — falls
-  // through to the Census batch geocoder, as before.
+  // Try NYC GeoSearch first (see pickGeoSearchMatch for why its result has to match on zip and
+  // house number); whatever it can't confidently place — including every address genuinely
+  // outside NYC — falls through to the Census batch geocoder, as before.
   const geoSearchResults = addressRows.length ? await geocodeWithGeoSearch(addressRows) : new Map<number, MatchResult>()
   const remaining = addressRows.filter((row) => !geoSearchResults.get(row.id)?.matched)
 
@@ -207,18 +259,34 @@ async function main(): Promise<void> {
     ? await geocode(remaining.map((r) => r.id), remaining.map((r) => ({ street: r.street, city: r.city, state: r.state, zip: r.zip })))
     : new Map<number, MatchResult>()
 
-  const results = new Map<number, MatchResult>(geoSearchResults)
-  for (const [id, r] of censusResults) results.set(id, { ...r, source: 'census' })
+  const results = new Map<number, MatchResult>()
+  for (const [id, r] of geoSearchResults) if (r.matched) results.set(id, r)
+  for (const [id, r] of censusResults) {
+    const fallback = geoSearchResults.get(id)
+    if (r.matched || !fallback) results.set(id, { ...r, source: 'census' })
+    // Neither geocoder placed the exact building. Keep GeoSearch's same-street point rather than
+    // dropping the resource, and say why it needs review.
+    else results.set(id, {
+      ...fallback,
+      matched: true,
+      review: `GeoSearch matched ${fallback.matchedAddress}, not house number ${records[id]['Street Number']}, and Census found no match. Confirm the location.`,
+    })
+  }
+  for (const [id, r] of results) {
+    const note = REVIEW_NOTES[records[id]['Organization Name']]
+    if (note && r.matched) r.review = note
+  }
 
   const features = records.map((r, i) => toFeature(r, results.get(i)))
   const matched = features.filter((f) => f.properties.geocode_match === 'matched')
   const unmatched = features.filter((f) => f.properties.geocode_match === 'unmatched').length
   const viaGeoSearch = matched.filter((f) => f.properties.geocode_source === 'geosearch').length
   const viaCensus = matched.filter((f) => f.properties.geocode_source === 'census').length
+  const needsReview = matched.filter((f) => f.properties.geocode_review).length
 
   mkdirSync(dirname(out), { recursive: true })
   writeFileSync(out, JSON.stringify({ type: 'FeatureCollection', features }))
-  console.log(`${records.length} resources (${matched.length} matched [${viaGeoSearch} via GeoSearch, ${viaCensus} via Census], ${unmatched} unmatched, ${records.length - matched.length - unmatched} not attempted) -> ${out}`)
+  console.log(`${records.length} resources (${matched.length} matched [${viaGeoSearch} via GeoSearch, ${viaCensus} via Census, ${needsReview} need review], ${unmatched} unmatched, ${records.length - matched.length - unmatched} not attempted) -> ${out}`)
 }
 
 if (process.argv[1] === import.meta.filename) {
