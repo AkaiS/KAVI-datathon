@@ -1,6 +1,6 @@
 # Scripts
 
-Scripts are grouped by what they work on. Run them from the repo root. All of them need Node 22.18 or later and have no npm dependencies.
+Scripts are grouped by what they work on. Run them from the repo root. The Node scripts need Node 22.18 or later and have no npm dependencies. The Python scripts in `pdf/` need [uv](https://docs.astral.sh/uv/), which installs their one dependency (`pymupdf`) from the header of each script.
 
 | Folder | Script | What it does | Run with |
 |---|---|---|---|
@@ -12,6 +12,9 @@ Scripts are grouped by what they work on. Run them from the repo root. All of th
 | (top level) | `nypl_connections_to_geojson.ts` | Geocodes `data/NYPL Connections Resources.csv` (NYC GeoSearch, then Census) into `data/nypl_connections_resources.geojson`. See [`md/nypl_connections.md`](../md/nypl_connections.md). | `node scripts/nypl_connections_to_geojson.ts` |
 | `tests/` | `nypl_connections_to_geojson.test.ts` | Unit tests for the script above; no network calls. | `node --test scripts/tests/nypl_connections_to_geojson.test.ts` |
 | `analysis/` | `analyze_nypl_connections_location.py` | Reproduces the numbers in `analysis/nypl_connections_location_analysis.md` from the GeoJSON. | `python3 scripts/analysis/analyze_nypl_connections_location.py` |
+| `pdf/` | `extract_listings.py` | Reads `data/NYPL_JPS_Connections_2026.pdf` (not in git) and writes every listing with its chapter, section, and subheading to `data/extracted/connections_pdf_listings.csv`. Headings are read from fixed font sizes and checked against the PDF's bookmarks. | `uv run scripts/pdf/extract_listings.py` |
+| `pdf/` | `compare_to_csv.py` | Matches each row of `data/NYPL Connections Resources.csv` to a PDF listing and writes `data/extracted/connections_pdf_vs_csv.csv` with whether the chapter and section agree. Run `extract_listings.py` first. | `uv run scripts/pdf/compare_to_csv.py` |
+| `pdf/` | `extend_clean_resources.py` | Adds PDF chapter, section, service subtype, audience, contradiction, and multi-label description service type columns (reviewed in `pdf/reviewed_service_types.csv`) to `data/cleaned/resources_clean.csv`, and fills blank service types, in `data/cleaned/resources_extended.csv`. See [`pdf/README.md`](pdf/README.md). | `uv run scripts/pdf/extend_clean_resources.py` |
 
 Every script reads from and writes to the top-level [`data/`](../data) folder. Database schema changes go in [`supabase/migrations/`](../supabase/migrations), not here.
 
