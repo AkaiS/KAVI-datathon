@@ -59,6 +59,7 @@ input[type=search], select { padding: 8px 10px; border: 1px solid var(--line); b
 .tile { text-align: left; border: 1.5px solid var(--line); background: #fff; border-radius: 10px; padding: 12px; display: flex; gap: 8px; align-items: center; }
 .tile[aria-pressed=true] { border-color: var(--accent); background: var(--accent-soft); }
 .tile:disabled { opacity: .4; }
+.tile .count-open { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
 .pick-map { height: 300px; margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 .nav { display: flex; justify-content: space-between; gap: 8px; margin-top: 28px; }
 .nav button { padding: 10px 18px; border-radius: 8px; border: 1px solid var(--line); background: #fff; }

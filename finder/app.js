@@ -69,7 +69,7 @@ const toggle = (set, value) => (set.has(value) ? set.delete(value) : set.add(val
 function tilesHtml(facet, values) {
   return `<div class="tiles">${values.map((v) => `<button type="button" class="tile" data-facet="${facet}" data-value="${escapeHtml(v)}" aria-pressed="false">
       ${facet === 'services' ? `<span class="dot" style="background:${serviceColor(v)}"></span>` : ''}
-      <span class="tile-label">${escapeHtml(v === 'true' ? 'Spanish-speaking staff' : v)}</span><span class="count"></span>
+      <span class="tile-label">${escapeHtml(v === 'true' ? 'Spanish-speaking staff' : v)}${facet === 'audiences' ? '<small class="count-open"></small>' : ''}</span><span class="count"></span>
     </button>`).join('')}</div>`;
 }
 
@@ -122,13 +122,19 @@ function renderStep() {
 function updateStep() {
   const n = matchingResources(resources, filters).length;
   const counts = { services: countBy(resources, filters, 'services'), audiences: countBy(resources, filters, 'audiences'), spanish: countBy(resources, filters, 'spanish') };
+  // Audience tiles show the resources for that group, and below the label how many open-to-everyone
+  // resources picking it adds after them.
+  const openCounts = countBy(resources, filters, 'audiences_open');
   for (const tile of app.querySelectorAll('.tile')) {
     const { facet, value } = tile.dataset;
     const selected = facet === 'spanish' ? filters.spanish : filters[facet].has(value);
     const count = counts[facet].get(facet === 'spanish' ? true : value) ?? 0;
+    const open = facet === 'audiences' ? openCounts.get(value) ?? 0 : 0;
     tile.setAttribute('aria-pressed', String(selected));
     tile.querySelector('.count').textContent = count;
-    tile.disabled = !count && !selected;
+    const openEl = tile.querySelector('.count-open');
+    if (openEl) openEl.textContent = open ? `+${open} open to all` : '';
+    tile.disabled = !count && !open && !selected;
   }
   const back = app.querySelector('[data-nav=back]');
   back.style.visibility = step === 0 ? 'hidden' : '';

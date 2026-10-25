@@ -74,16 +74,18 @@ export function matchingResources(resources, f) {
 }
 
 // Count of resources per value of one filter, with that filter itself ignored.
-// facet: 'services' | 'audiences' | 'spanish' | 'boroughs' | 'how'. Returns a Map of value -> count.
+// facet: 'services' | 'audiences' | 'audiences_open' | 'spanish' | 'boroughs' | 'how'. Returns a Map of value -> count.
+// 'audiences' counts the resources tagged with each audience; 'audiences_open' counts the resources open to
+// everyone that picking that audience adds below them. Together they are what picking the tile shows.
 export function countBy(resources, f, facet) {
   const counts = new Map();
   const add = (k) => counts.set(k, (counts.get(k) ?? 0) + 1);
-  // An audience tile counts what picking it would show: resources tagged with it plus those open to everyone.
-  const audienceValues = facet === 'audiences' ? [...new Set(resources.flatMap((r) => r.audiences))] : [];
+  const audienceValues = facet === 'audiences_open' ? [...new Set(resources.flatMap((r) => r.audiences))] : [];
   for (const r of resources) {
-    if (!passes(r, f, facet)) continue;
+    if (!passes(r, f, facet === 'audiences_open' ? 'audiences' : facet)) continue;
     if (facet === 'services') r.services.forEach(add);
-    else if (facet === 'audiences') audienceValues.filter((a) => matchesAudience(r, new Set([a]))).forEach(add);
+    else if (facet === 'audiences') r.audiences.forEach(add);
+    else if (facet === 'audiences_open') { if (r.forEveryone) audienceValues.filter((a) => !r.audiences.includes(a)).forEach(add); }
     else if (facet === 'spanish') { if (r.spanish) add(true); }
     else if (facet === 'boroughs') { if (r.inPerson && r.borough) add(r.borough); }
     else if (facet === 'how') add(r.inPerson ? 'in_person' : 'remote');
