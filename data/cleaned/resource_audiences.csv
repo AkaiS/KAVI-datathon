@@ -79,7 +79,7 @@ resource_id,org_name,pdf_audiences,confirmed_pdf_audiences,unconfirmed_pdf_audie
 78,Queens Public Library (Tech Workshops),,,,,,,,,,not_stated,,assumed,Everyone,False,False
 79,NYC Office of Technology & Innovation—Digital Equity,,,,,,,,,,not_stated,,assumed,Everyone,False,False
 80,Bard Prison Initiative (BPI)—Bard Microcolleges,,,,,,,,,,not_stated,,assumed,Everyone,False,False
-81,Bronx Community College—Future Now,,,,,,,,Youth,,restricted,ages 17–24,,Youth,True,False
+81,Bronx Community College—Future Now,,,,,,,,,Youth,not_stated,ages 17–24,assumed,Youth; Everyone,False,False
 82,College & Community Fellowship (CCF),,,,,,Women,Women,,Women,not_stated,,assumed,Women; Everyone,False,False
 83,Columbia Law School—Paralegal Pathways Initiative,,,,,,Formerly Incarcerated People,Formerly Incarcerated People,,,not_stated,,assumed,Formerly Incarcerated People; Everyone,False,False
 84,Lehman College—Reentry@Lehman,,,,,Formerly Incarcerated People,Formerly Incarcerated People,Formerly Incarcerated People,,Formerly Incarcerated People,not_stated,,assumed,Formerly Incarcerated People; Everyone,False,False
@@ -612,7 +612,7 @@ resource_id,org_name,pdf_audiences,confirmed_pdf_audiences,unconfirmed_pdf_audie
 611,Transgender Law Center (TLC),LGBTQI+,LGBTQI+,,confirmed,LGBTQI+,LGBTQI+; Immigrants; Formerly Incarcerated People,LGBTQI+; Immigrants; Formerly Incarcerated People,Formerly Incarcerated People,LGBTQI+,restricted,currently incarcerated people only,,LGBTQI+; Immigrants; Formerly Incarcerated People,True,False
 612,Scarleteen—Kicked Out: A Survival Guide (resource series),Youth,Youth,,confirmed,,Youth,,,Youth,not_stated,,assumed,Youth; Everyone,False,False
 613,Advocates for Children (AFC),Youth,Youth,,confirmed,,Youth; Immigrants; People with Disabilities; Parents & Caregivers; People without homes,Youth; Immigrants; People with Disabilities; Parents & Caregivers; People without homes,,,not_stated,,assumed,Youth; Immigrants; People with Disabilities; Parents & Caregivers; People without homes; Everyone,False,False
-614,The Animation Project (TAP),Youth,,Youth,not confirmed,,,,Youth,,restricted,ages 18–24,,Youth,True,False
+614,The Animation Project (TAP),Youth,,Youth,not confirmed,,,,,Youth,not_stated,ages 18–24,assumed,Youth; Everyone,True,False
 615,Artistic Noise,Youth,Youth,,confirmed,,Youth; Formerly Incarcerated People; People without homes,Youth; Formerly Incarcerated People; People without homes,,Youth; People without homes,not_stated,,assumed,Youth; Formerly Incarcerated People; People without homes; Everyone,False,False
 616,Avenues for Justice (AFJ),Youth,Youth,,confirmed,,Youth,Youth,Youth,Youth,restricted,ages 13–24,,Youth,True,False
 617,BronxConnect,Youth,Youth,,confirmed,,Youth; Formerly Incarcerated People,Youth; Formerly Incarcerated People,,,not_stated,,assumed,Youth; Formerly Incarcerated People; Everyone,False,False
@@ -624,7 +624,7 @@ resource_id,org_name,pdf_audiences,confirmed_pdf_audiences,unconfirmed_pdf_audie
 623,Elite Learners—Reentry Services - 2 (Anti-Violence Hub),Youth,Youth,,confirmed,Formerly Incarcerated People,Formerly Incarcerated People,Youth,,Formerly Incarcerated People,not_stated,,assumed,Youth; Formerly Incarcerated People; Everyone,False,False
 624,Elite Learners—Reentry Services - 3 (Brownsville Office),Youth,Youth,,confirmed,Formerly Incarcerated People,Formerly Incarcerated People,Youth,,Formerly Incarcerated People,not_stated,,assumed,Youth; Formerly Incarcerated People; Everyone,False,False
 625,Exalt Youth,Youth,Youth,,confirmed,Youth,Youth,Youth,Youth,Youth,restricted,ages 15–19,,Youth,True,False
-626,Exodus Transitional Community—Women & Girls Project,Youth,,Youth,not confirmed,Women,Women; Formerly Incarcerated People,Women; Formerly Incarcerated People,Youth,Women,restricted,ages 15–24,,Youth; Women; Formerly Incarcerated People,True,False
+626,Exodus Transitional Community—Women & Girls Project,Youth,,Youth,not confirmed,Women,Women; Formerly Incarcerated People,Women; Formerly Incarcerated People,,Women; Youth,not_stated,ages 15–24,assumed,Youth; Women; Formerly Incarcerated People; Everyone,True,False
 627,Getting Out and Staying Out (GOSO),Formerly Incarcerated People; Youth,Formerly Incarcerated People; Youth,,confirmed,,Youth; Formerly Incarcerated People,Youth; Formerly Incarcerated People,Youth,Youth,restricted,ages 16–24,,Formerly Incarcerated People; Youth,True,False
 628,Getting Out and Staying Out (GOSO),Formerly Incarcerated People; Youth,Formerly Incarcerated People; Youth,,confirmed,,,Youth; Formerly Incarcerated People,Youth,,restricted,ages 16–24,,Formerly Incarcerated People; Youth,True,False
 629,Girl Vow,Youth,Youth,,confirmed,Women,Youth; LGBTQI+; People without homes,Youth; LGBTQI+; People without homes,,Women; Youth; LGBTQI+; People without homes,not_stated,,assumed,Youth; Women; LGBTQI+; People without homes; Everyone,False,False
