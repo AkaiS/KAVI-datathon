@@ -21,6 +21,7 @@ const SERVICE_COLORS = {
   'Family & Childcare': '#117733',
   'Addiction & Recovery': '#882255',
   Food: '#E69F00',
+  'Disability Services': '#999933',
 };
 export const serviceColor = (label) => SERVICE_COLORS[label] ?? '#6b7280';
 

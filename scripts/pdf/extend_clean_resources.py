@@ -28,7 +28,11 @@
 # (see "Remaining work" in scripts/pdf/README.md). A row whose description only says "See X listing
 # for full description" uses X's text instead ("pointer:<resource_id of X>").
 # description_service_types is the row's entry in reviewed_service_types.csv when it has one, else
-# description_keyword_types.
+# description_keyword_types. Two human reviews in data/review/ (see its README) then override it:
+#   reviewed_service_types_human_check.csv  a person's verdict on each reviewed_service_types.csv
+#                                           entry; "change" replaces the types with human_service_types
+#   new_service_types_review.csv            a person's types for the rows with no type at all,
+#                                           including the new type "Disability Services"
 #
 # Writes data/cleaned/resources_extended.csv. Run extract_listings.py first.
 #
@@ -46,6 +50,8 @@ CLEAN_IN = ROOT / "data" / "cleaned" / "resources_clean.csv"
 PDF_IN = ROOT / "data" / "extracted" / "connections_pdf_listings.csv"
 MAPPING = Path(__file__).with_name("section_service_types.csv")
 REVIEWED = Path(__file__).with_name("reviewed_service_types.csv")
+HUMAN_CHECK = ROOT / "data" / "review" / "reviewed_service_types_human_check.csv"
+NEW_TYPES = ROOT / "data" / "review" / "new_service_types_review.csv"
 OUT = ROOT / "data" / "cleaned" / "resources_extended.csv"
 
 TO_ASSIGN = "service_type to assign"  # the review note scripts/cleaning/ adds for a blank service_type
@@ -170,13 +176,29 @@ def main():
 
     # Description tags, only for rows still without a service type (for now). A row in
     # reviewed_service_types.csv takes its reviewed types; the keyword types stay alongside.
-    reviewed = {}
-    for rev in load(REVIEWED):
-        row = next((r for r in out if r["resource_id"] == rev["resource_id"]), None)
-        if not row or row["org_name"] != rev["org_name"]:
-            sys.exit(f"{REVIEWED.name}: resource_id {rev['resource_id']} is no longer {rev['org_name']!r}; "
-                     "resources_clean.csv was renumbered, so re-key the table")
-        reviewed[rev["resource_id"]] = rev
+    by_id = {r["resource_id"]: r for r in out}
+
+    def keyed(path):
+        table = {}
+        for rev in load(path):
+            row = by_id.get(rev["resource_id"])
+            if not row or row["org_name"] != rev["org_name"]:
+                sys.exit(f"{path.name}: resource_id {rev['resource_id']} is no longer {rev['org_name']!r}; "
+                         "resources_clean.csv was renumbered, so re-key the table")
+            table[rev["resource_id"]] = rev
+        return table
+
+    reviewed, checked, new_types = keyed(REVIEWED), keyed(HUMAN_CHECK), keyed(NEW_TYPES)
+    for rid, check in checked.items():
+        if rid not in reviewed:
+            sys.exit(f"{HUMAN_CHECK.name}: resource_id {rid} is not in {REVIEWED.name}")
+        if check["human_verdict"] not in ("agree", "change", "unsure", ""):
+            sys.exit(f"{HUMAN_CHECK.name}: resource_id {rid} has human_verdict {check['human_verdict']!r}")
+        if check["human_verdict"] == "change" and not check["human_service_types"].strip():
+            sys.exit(f"{HUMAN_CHECK.name}: resource_id {rid} is 'change' but human_service_types is blank")
+    for rid in new_types:
+        if by_id[rid]["service_type_extended"]:
+            sys.exit(f"{NEW_TYPES.name}: resource_id {rid} already has service_type_extended; the review is for rows without one")
     by_org = {norm(r["org_name"]): (r, text) for r, text in zip(out, texts)}
     # Two passes, so a pointer row reads its target's keyword types and never types the target
     # got from the review or from the PDF chapter it is printed in.
@@ -195,12 +217,35 @@ def main():
     for r in out:
         if r["service_type_extended"]:
             continue
-        types = r["description_keyword_types"]
-        if r["resource_id"] in reviewed:
-            types = reviewed[r["resource_id"]]["reviewed_service_types"]
+        rid, types = r["resource_id"], r["description_keyword_types"]
+        if rid in reviewed:
+            types = reviewed[rid]["reviewed_service_types"]
             r["description_service_types_source"] = "reviewed"
+            verdict = checked.get(rid, {}).get("human_verdict")
+            if verdict == "agree":
+                r["description_service_types_source"] = "human_agreed"
+            elif verdict == "change":
+                types = joined(t.strip() for t in checked[rid]["human_service_types"].split(";"))
+                r["description_service_types_source"] = "human_changed"
+        if rid in new_types:
+            rev = new_types[rid]
+            proposed = joined(t.strip() for t in f"{rev['proposed_service_type']};{rev['fits_existing_type']}".split(";"))
+            if r["description_service_types_source"] == "human_changed" and proposed and proposed != types:
+                sys.exit(f"resource_id {rid}: {NEW_TYPES.name} gives {proposed!r}, {HUMAN_CHECK.name} gives {types!r}")
+            if proposed and r["description_service_types_source"] != "human_changed":
+                types, r["description_service_types_source"] = proposed, "human_new_types"
         r["description_service_types"] = types
         r["service_types_all"] = joined((r["service_types_all"] + "; " + types).split("; "))
+    # new_service_types_review.csv leaves a cross-reference row blank: it takes the types of the
+    # organization's full listing. A separate pass, because the full listing may come later in the file.
+    for rid, rev in new_types.items():
+        r = by_id[rid]
+        if r["description_service_types"] or r["row_type"] != "cross_reference":
+            continue
+        full = next((o for o in out if o["org_name"] == r["org_name"] and o["row_type"] != "cross_reference"), None)
+        if full:
+            r["description_service_types"] = r["service_types_all"] = full["service_types_all"]
+            r["description_service_types_source"] = f"cross_reference:{full['resource_id']}"
 
     with OUT.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=list(out[0]))
@@ -217,7 +262,10 @@ def main():
     for source in ("description_keywords", "pointer"):
         print(f"  description_service_types from {source}: "
               f"{count(lambda r: r['description_service_types'] and r['description_service_types_source'].startswith(source))}")
-    print(f"  description_service_types from reviewed: {count(lambda r: r['description_service_types_source'] == 'reviewed')}")
+    for source in ("reviewed", "human_agreed", "human_changed", "human_new_types", "cross_reference"):
+        print(f"  description_service_types from {source}: "
+              f"{count(lambda r: r['description_service_types_source'].split(':')[0] == source)}")
+    print(f"  service_types_all with Disability Services: {count(lambda r: 'Disability Services' in r['service_types_all'])}")
     pairs = [(set(filter(None, r["description_keyword_types"].split("; "))), set(filter(None, reviewed[r["resource_id"]]["reviewed_service_types"].split("; "))))
              for r in out if r["resource_id"] in reviewed]
     right = sum(len(k & e) for k, e in pairs)
