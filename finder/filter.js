@@ -25,12 +25,25 @@ export function miles(a, b) {
 
 const matchesText = (r, text) => text.toLowerCase().split(/\s+/).filter(Boolean).every((word) => r.searchText.includes(word));
 
+// A resource open to everyone (r.forEveryone) matches any audience; one restricted to certain people
+// matches only its own audiences.
+const matchesAudience = (r, audiences) => r.forEveryone || r.audiences.some((a) => audiences.has(a));
+
+// For the picked audiences: 1 = made for them (restricted to or focused on them), 2 = tagged with them,
+// 3 = open to everyone. 0 when no audience is picked. Results are listed in this order.
+export function audienceRank(r, f) {
+  if (!f.audiences.size) return 0;
+  if ((r.madeFor ?? []).some((a) => f.audiences.has(a))) return 1;
+  if (r.audiences.some((a) => f.audiences.has(a))) return 2;
+  return 3;
+}
+
 // Values inside services or audiences are OR'd; the filters are AND'd. `skip` names one filter to ignore,
 // which is how a tile's count shows what picking it would give. Phone/online resources ignore the
 // borough and distance filters, because they serve all of NYC.
 export function passes(r, f, skip = null) {
   if (skip !== 'services' && f.services.size && !r.services.some((s) => f.services.has(s))) return false;
-  if (skip !== 'audiences' && f.audiences.size && !r.audiences.some((a) => f.audiences.has(a))) return false;
+  if (skip !== 'audiences' && f.audiences.size && !matchesAudience(r, f.audiences)) return false;
   if (skip !== 'spanish' && f.spanish && !r.spanish) return false;
   if (skip !== 'how' && f.how === 'in_person' && !r.inPerson) return false;
   if (skip !== 'how' && f.how === 'remote' && r.inPerson) return false;
@@ -42,10 +55,19 @@ export function passes(r, f, skip = null) {
   return true;
 }
 
-// Matching resources with `distance` (miles from f.place, or null), nearest first, then by name.
+// Matching resources with `distance` (miles from f.place, or null), `rank` (audienceRank) and
+// `madeForPicked` (the picked audiences the resource is made for): best audience match first, then
+// nearest, then by name.
 export function matchingResources(resources, f) {
-  const out = resources.filter((r) => passes(r, f)).map((r) => ({ ...r, distance: f.place && r.inPerson ? miles(f.place, r) : null }));
-  out.sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity)
+  const out = resources.filter((r) => passes(r, f))
+    .map((r) => ({
+      ...r,
+      distance: f.place && r.inPerson ? miles(f.place, r) : null,
+      rank: audienceRank(r, f),
+      madeForPicked: (r.madeFor ?? []).filter((a) => f.audiences.has(a)),
+    }));
+  out.sort((a, b) => a.rank - b.rank
+    || (a.distance ?? Infinity) - (b.distance ?? Infinity)
     || b.hasName - a.hasName
     || a.name.localeCompare(b.name));
   return out;
@@ -56,10 +78,12 @@ export function matchingResources(resources, f) {
 export function countBy(resources, f, facet) {
   const counts = new Map();
   const add = (k) => counts.set(k, (counts.get(k) ?? 0) + 1);
+  // An audience tile counts what picking it would show: resources tagged with it plus those open to everyone.
+  const audienceValues = facet === 'audiences' ? [...new Set(resources.flatMap((r) => r.audiences))] : [];
   for (const r of resources) {
     if (!passes(r, f, facet)) continue;
     if (facet === 'services') r.services.forEach(add);
-    else if (facet === 'audiences') r.audiences.forEach(add);
+    else if (facet === 'audiences') audienceValues.filter((a) => matchesAudience(r, new Set([a]))).forEach(add);
     else if (facet === 'spanish') { if (r.spanish) add(true); }
     else if (facet === 'boroughs') { if (r.inPerson && r.borough) add(r.borough); }
     else if (facet === 'how') add(r.inPerson ? 'in_person' : 'remote');

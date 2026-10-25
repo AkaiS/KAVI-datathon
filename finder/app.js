@@ -5,6 +5,7 @@ import { RADII, countBy, matchingResources, newFilters } from './filter.js';
 import { cardHtml, escapeHtml, popupHtml } from './cards.js';
 import { createPlaceInput } from './place-input.js';
 import { createMap } from './map.js';
+import { applyLocalPreview, isLocalPreview } from './preview.js';
 
 const app = document.getElementById('app');
 const statusEl = document.getElementById('status');
@@ -350,6 +351,16 @@ async function main() {
       statusEl.classList.add('error');
     }
     return;
+  }
+  if (isLocalPreview()) {
+    try {
+      const preview = await applyLocalPreview(rows);
+      app.insertAdjacentHTML('beforebegin', `<p class="preview-note">${escapeHtml(preview.summary)}</p>`);
+    } catch (error) {
+      statusEl.textContent = error.message;
+      statusEl.classList.add('error');
+      return;
+    }
   }
   resources = rows.filter(isListed).map((row, i) => toResource(row, i));
   serviceValues = distinctValues(resources, 'services');
