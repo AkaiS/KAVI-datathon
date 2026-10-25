@@ -21,6 +21,16 @@ config.js       Supabase URL + publishable key for index.html (committed; browse
 .env.example    template for .env, which holds only the secret key for data imports
 ```
 
+## Data pipeline
+
+Raw Connections Guide export → cleaned, enriched CSV → Supabase → finder. Each step only adds columns; none of them edit a column an earlier step set.
+
+1. **Clean** — [`scripts/cleaning/data_cleaning_added_features.ipynb`](scripts/cleaning/README.md): `data/NYPL Connections Resources.csv` → `data/cleaned/resources_clean.csv`. Normalizes names, addresses, ZIPs and websites; derives `borough` and `row_type`; and makes a first, conservative pass at `service_type` (the guide's `Category`/`Subcategory` mapped to a standard type, then an unambiguous description keyword as a fallback). Ambiguous or unsupported rows are left blank rather than guessed.
+2. **Extend with the PDF** — [`scripts/pdf/extract_listings.py`](scripts/pdf/README.md) → `compare_to_csv.py` → `extend_clean_resources.py`: matches each row to its listing in the printed guide PDF, fills still-blank `service_type`s from the PDF section it's printed under, and runs a multi-label keyword search (`SERVICE_PATTERNS`) over every row's description — including rows that already have a type — to catch the secondary services a resource's description mentions beyond its primary one (e.g. a reentry org whose description also offers housing and legal help). Everything is combined into `service_types_all`, the column the finder actually filters on. Writes `data/cleaned/resources_extended.csv`.
+3. **Human review** — [`data/review/`](data/review/README.md): a person's proposed fixes (new service types, corrections to keyword- or PDF-based guesses) live here as CSVs. Step 2 (`extend_clean_resources.py`) reads both CSVs back in, so rerun it after editing them. The secondary tags step 2 adds to rows that already have a primary type are not reviewed yet (`description_service_types_source == "description_keywords"`).
+4. **Load into Supabase** — [`scripts/database/import-resources.mjs`](scripts/README.md): joins the geocoded GeoJSON, the NoMatch extras, and `resources_extended.csv` into `public.resources`. `"; "`-joined CSV columns such as `service_types_all` and `pdf_audiences` become Postgres `text[]`.
+5. **Finder** — `finder/resources.js`, `index.html`: reads `public.resources` straight from Supabase; `service_types_all` drives the "What kind of help?" filter and the map pin color.
+
 ## Accessing the resources
 
 ### 1. Data files: `data/`
@@ -28,7 +38,7 @@ config.js       Supabase URL + publishable key for index.html (committed; browse
 | File | What it is | Rows | Source |
 |---|---|---|---|
 | `NYPL Connections Resources.csv` | The Connections Guide extracted from the PDF, one row per resource. | 760 | Project Google Drive |
-| `nypl_connections_resources.geojson` | The same 760 rows in the same order, with coordinates and `geocode_*` fields added. This is what the Supabase `resources` table is loaded from. | 760 | `node scripts/nypl_connections_to_geojson.ts`; see [md/nypl_connections.md](md/nypl_connections.md) |
+| `nypl_connections_resources.geojson` | The same 760 rows in the same order, with coordinates and `geocode_*` fields added. This is what the Supabase `resources` table is loaded from. | 760 | `node scripts/nypl_connections_to_geojson.ts`; see [scripts/nypl_connections.md](scripts/nypl_connections.md) |
 | `NYPLConnections_NoMatch.csv` | Copies of Connections Guide rows that could not be geocoded (no usable address, or hotlines), with `lat`/`lon` added for 5 NYC NEON clothing closet sites. The import adds those 5 as extra rows; the other 40 are already in the GeoJSON. Encoded as Windows-1252, not UTF-8. | 45 | Project Google Drive |
 | `nyc_osm_resources.csv` / `.geojson` | NYC service locations from OpenStreetMap, with category, borough and coordinates. Credit "© OpenStreetMap contributors" wherever it is shown. | 1,104 | `npm run osm`; see [scripts/osm/README.md](scripts/osm/README.md) |
 
