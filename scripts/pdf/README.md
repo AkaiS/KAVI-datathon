@@ -58,8 +58,8 @@ All columns of `resources_clean.csv` come first, unchanged.
 | `service_type_extended_source` | `pr:<service_type_source>`, `pdf_section`, `pdf_other_listings` (every other listing agrees), `pdf_candidates` (they disagree; left blank), or `unassigned`. |
 | `service_subtype_extended` | `service_subtype` of the row's own PDF section, when that section's type is `service_type_extended`. |
 | `description_keyword_types` | Every service type whose pattern in `SERVICE_PATTERNS` matches the row's description (plus the PDF's listing text), or, for a row whose description only says "See X listing for full description", X's description. Multi-label. **Only filled where `service_type_extended` is blank**; see Remaining work. |
-| `description_service_types` | The row's types from `reviewed_service_types.csv` when it has an entry there, otherwise `description_keyword_types`. Multi-label. |
-| `description_service_types_source` | `reviewed`, `description_keywords`, or `pointer:<resource_id>` (types taken from X's description). |
+| `description_service_types` | The row's types from the human review in `data/review/` when it has one, else from `reviewed_service_types.csv`, otherwise `description_keyword_types`. Multi-label. |
+| `description_service_types_source` | `human_agreed` (a person agreed with `reviewed_service_types.csv`), `human_changed` (a person replaced those types), `human_new_types` (from `new_service_types_review.csv`), `cross_reference:<resource_id>` (a cross-reference row the review left blank, which takes its full listing's `service_types_all`), `reviewed`, `description_keywords`, or `pointer:<resource_id>` (types taken from X's description). |
 | `service_types_all` | `service_type_extended`, `pdf_org_service_types`, and `description_service_types` together, for map filters that show an organization under every service it offers. |
 | `pdf_contradiction` | Set only where the PDF clearly disagrees: the notebook's own rules applied to the PDF section give another type, the PDF chapter differs from `guide_category`, or "Not found in PDF". |
 | `needs_review_extended`, `review_notes_extended` | `review_notes` without "service_type to assign" where the PDF filled it, plus `pdf_contradiction`. |
@@ -102,8 +102,10 @@ care" in a legal organization's description of the cases it takes still reads as
   too, and `service_types_all` should get their description types as well. The code change is removing the
   `if r["service_type_extended"]: continue` checks; the work is reviewing the new tags the same way and adding them to
   `reviewed_service_types.csv`, and deciding whether description types may sit next to a type the guide assigned.
-- **A person should check `reviewed_service_types.csv`.** The reviewer was Claude, not someone who knows these
-  organizations.
-- **The 25 rows with no type at all** offer services outside the 10 types: disability services and independent
-  living centers, domestic and dating violence hotlines, LGBTQ+ crisis lines, library services for blind readers.
-  They need new service types or a person's decision.
+- **A violence-related service type** is proposed for rows 518, 562, 590, 651 and 656 in
+  `data/review/new_service_types_review.csv`, but not decided yet. Until then those rows keep the existing types
+  the review gave them.
+
+A person has checked `reviewed_service_types.csv` (`data/review/reviewed_service_types_human_check.csv`) and
+given types to the 25 rows that had none (`data/review/new_service_types_review.csv`), adding the type
+`Disability Services`. The script applies both files; see `data/review/README.md`.

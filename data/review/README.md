@@ -5,7 +5,11 @@
 outside the 10 existing service types, so the finder's "What kind of help?" question can't find them.
 
 The goal is a **proposal** for the team, not a final change: which new service types to add, and which
-rows fit an existing type after all. Nothing here is read by a script yet.
+rows fit an existing type after all. `scripts/pdf/extend_clean_resources.py` applies both CSVs in this folder to
+`description_service_types` and `service_types_all` in `data/cleaned/resources_extended.csv`: `proposed_service_type`
+and `fits_existing_type` together for the 25 rows here, and `human_service_types` for every `change` row in
+`reviewed_service_types_human_check.csv`. It stops if the two files give one row different types. After editing
+either file, run it and then `npm run import -- --replace`.
 
 ## Columns
 
