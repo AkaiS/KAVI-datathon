@@ -57,36 +57,53 @@ All columns of `resources_clean.csv` come first, unchanged.
 | `service_type_extended` | `service_type` if the notebook set it, otherwise filled from the PDF. Never overrides. |
 | `service_type_extended_source` | `pr:<service_type_source>`, `pdf_section`, `pdf_other_listings` (every other listing agrees), `pdf_candidates` (they disagree; left blank), or `unassigned`. |
 | `service_subtype_extended` | `service_subtype` of the row's own PDF section, when that section's type is `service_type_extended`. |
-| `description_service_types` | Every service type whose pattern in `SERVICE_PATTERNS` matches the row's description (plus the PDF's listing text). Multi-label. **Only filled where `service_type_extended` is blank**; see Remaining work. |
-| `description_service_types_source` | `description_keywords`, or `pointer:<resource_id>` when the description only says "See X listing for full description" and the types were taken from X. |
+| `description_keyword_types` | Every service type whose pattern in `SERVICE_PATTERNS` matches the row's description (plus the PDF's listing text), or, for a row whose description only says "See X listing for full description", X's description. Multi-label. **Only filled where `service_type_extended` is blank**; see Remaining work. |
+| `description_service_types` | The row's types from `reviewed_service_types.csv` when it has an entry there, otherwise `description_keyword_types`. Multi-label. |
+| `description_service_types_source` | `reviewed`, `description_keywords`, or `pointer:<resource_id>` (types taken from X's description). |
 | `service_types_all` | `service_type_extended`, `pdf_org_service_types`, and `description_service_types` together, for map filters that show an organization under every service it offers. |
 | `pdf_contradiction` | Set only where the PDF clearly disagrees: the notebook's own rules applied to the PDF section give another type, the PDF chapter differs from `guide_category`, or "Not found in PDF". |
 | `needs_review_extended`, `review_notes_extended` | `review_notes` without "service_type to assign" where the PDF filled it, plus `pdf_contradiction`. |
 
 ## Description tagging
 
-`SERVICE_PATTERNS` in `extend_clean_resources.py` starts from the notebook's `hints` and drops words that say who a
-resource serves rather than what it offers ("formerly incarcerated", "parole", "advocacy", "court-involved",
-"employment authorization", ...). Unlike the notebook, it keeps every type that matches instead of only rows with
-exactly one match: 102 of the 146 rows left blank above matched two or more types, which is why the notebook left
-them blank.
+`SERVICE_PATTERNS` in `extend_clean_resources.py` starts from the notebook's `hints`. Unlike the notebook, it keeps
+every type that matches instead of only rows with exactly one match: 102 of the 146 rows left blank above matched two
+or more types, which is why the notebook left them blank. It also drops words that say who a resource serves or a
+topic it mentions rather than what it offers ("formerly incarcerated", "parole", "unhoused", "shelter system",
+"employment authorization", "medical records", "does not offer legal services", ...).
 
-Results on those 146 rows: 93 tagged from their description, 23 from the listing they point to, 29 with no match.
+### `reviewed_service_types.csv`
 
-Precision was checked by hand on 18 tagged rows: 51 of 58 tags were right. Three of the misses are fixed by
-exclusions now in the patterns. The remaining kind can't be fixed with keywords: a description that names who a
-program serves ("young people who are unhoused or living in the shelter system") gets Housing even for an arts
-program (Artistic Noise, `resource_id` 615).
+Every row that got a description type, 123 in all, was checked against its description (and the PDF's listing text)
+by Claude on 2026-10-24: 116 by four subagents with one shared rubric, 7 by hand. **No person has checked it yet.**
+Each entry has the reviewed types, the keyword types at review time, and in `changes` each tag removed (`-Type: why`)
+or added (`+Type: quote`). The script uses the reviewed types for those rows and stops if a `resource_id` no longer
+belongs to the same `org_name`.
+
+The review changed the keyword tags in 79 of the 116 subagent-reviewed rows. Against the keyword patterns before the
+fixes below, 248 of 289 tags were right and 248 of the 326 reviewed tags were found. The most common mistakes:
+
+- **Health & Mental Health from "counseling"** that is vocational, benefits, or discharge counseling (the seven
+  ACCES-VR offices), and from "medical" in legal text ("medical records", "advance medical directives").
+- **Housing from who is served**: "homeless youth", "unhoused", "living in the shelter system".
+- **Employment and Education from topics** in legal or advocacy text ("denied jobs", "school suspensions").
+- **Missed Financial Assistance** (24 of 78 missing tags): "benefits applications", stipends, bond, "reduced fare",
+  "Social Security", "money management".
+
+`SERVICE_PATTERNS` now has fixes for those patterns, and every run prints how the patterns compare with the review:
+290 of 326 tags right, 290 of the 333 reviewed tags found. Those numbers are measured on the rows the fixes were
+written for, so expect lower on rows that were not reviewed. Some mistakes can't be fixed with keywords: "medical
+care" in a legal organization's description of the cases it takes still reads as health care.
 
 ## Remaining work
 
-- **Tag the other 613 rows.** `description_service_types` is only filled where `service_type_extended` is blank.
+- **Tag the other 613 rows.** `description_keyword_types` is only filled where `service_type_extended` is blank.
   Rows that already have one `service_type` (from the notebook or the PDF) are often multi-service organizations
   too, and `service_types_all` should get their description types as well. The code change is removing the
-  `if r["service_type_extended"]: continue` check; the work is checking precision on those rows, since many are
-  long multi-program listings, and deciding whether description types may sit next to a type the guide assigned.
-- **The 29 rows with no match** offer services outside the 10 types: disability services and independent living
-  centers, domestic and dating violence hotlines, LGBTQ+ crisis lines, library services for blind readers,
-  transportation discounts. They need new service types or a person's decision.
-- **Spot-check the tags** in `description_service_types` before using them on the map; the 18-row check is a sample,
-  not a review.
+  `if r["service_type_extended"]: continue` checks; the work is reviewing the new tags the same way and adding them to
+  `reviewed_service_types.csv`, and deciding whether description types may sit next to a type the guide assigned.
+- **A person should check `reviewed_service_types.csv`.** The reviewer was Claude, not someone who knows these
+  organizations.
+- **The 25 rows with no type at all** offer services outside the 10 types: disability services and independent
+  living centers, domestic and dating violence hotlines, LGBTQ+ crisis lines, library services for blind readers.
+  They need new service types or a person's decision.

@@ -23,10 +23,12 @@
 #   - the PDF chapter differs from a non-blank guide_category.
 #   - the resource is not in the PDF at all.
 #
-# description_service_types is multi-label: every service type whose pattern in SERVICE_PATTERNS
+# description_keyword_types is multi-label: every service type whose pattern in SERVICE_PATTERNS
 # matches the row's text. For now it is filled only for rows service_type_extended leaves blank
 # (see "Remaining work" in scripts/pdf/README.md). A row whose description only says "See X listing
-# for full description" takes X's types instead ("pointer:<resource_id of X>").
+# for full description" uses X's text instead ("pointer:<resource_id of X>").
+# description_service_types is the row's entry in reviewed_service_types.csv when it has one, else
+# description_keyword_types.
 #
 # Writes data/cleaned/resources_extended.csv. Run extract_listings.py first.
 #
@@ -43,32 +45,41 @@ ROOT = Path(__file__).resolve().parents[2]
 CLEAN_IN = ROOT / "data" / "cleaned" / "resources_clean.csv"
 PDF_IN = ROOT / "data" / "extracted" / "connections_pdf_listings.csv"
 MAPPING = Path(__file__).with_name("section_service_types.csv")
+REVIEWED = Path(__file__).with_name("reviewed_service_types.csv")
 OUT = ROOT / "data" / "cleaned" / "resources_extended.csv"
 
 TO_ASSIGN = "service_type to assign"  # the review note scripts/cleaning/ adds for a blank service_type
 
-# The notebook's `hints`, tightened so a word that names who a resource serves or what it does in
-# general does not count as a service: "formerly incarcerated", "parole", "recently released",
-# "advocacy", "court-involved", "public education", "leadership training", "career counseling",
-# "employment authorization", "health care proxy". A hand check of 18 tagged rows found 51 of 58
-# tags right before the last three exclusions were added.
+# The notebook's `hints`, tightened so a word that names who a resource serves, or a topic it
+# mentions, does not count as a service ("formerly incarcerated", "parole", "advocacy",
+# "court-involved", "unhoused", "shelter system", "employment authorization", "health care proxy",
+# "medical records", "after-school hours", "does not offer legal services"), and widened for
+# services the review found missing (benefits applications, stipends, bond, reduced fare, classes).
+# Measured against reviewed_service_types.csv on every run; see the printed precision and recall.
 SERVICE_PATTERNS = {
     "Food": r"\bfood\b|pantr|soup kitchen|\bmeals?\b|grocer|nutrition",
-    "Family & Childcare": r"child ?care|day ?care|after-?school|parenting|child welfare|family support|caregiver support",
-    "Housing": r"housing|shelter|homeless|unhoused|tenant|eviction|rent assistance",
-    "Health & Mental Health": r"mental health|(?<!career )(?<!financial )(?<!legal )(?<!housing )(?<!benefits )counseling"
-                              r"|therap|medical|health ?care(?! proxy)|health clinic|clinicians?|psychiatr|primary care"
-                              r"|cancer|mammogra|crisis (line|support|intervention|counseling)|suicide",
+    "Family & Childcare": r"child ?care|day ?care|after-?school(?! hours)|parenting|child welfare|family support"
+                          r"|caregiver support|caregivers? (support|groups?)",
+    "Housing": r"housing(?! status)|shelters?(?! system)|homelessness prevention|tenant|eviction|rent assistance",
+    "Health & Mental Health": r"mental health|(?<!career )(?<!financial )(?<!legal )(?<!housing )(?<!benefits )"
+                              r"(?<!vocational )(?<!rehabilitation )(?<!discharge )counseling"
+                              r"|therap|medical(?! records)(?! directives)|health ?care(?! proxy)|health clinic|clinicians?"
+                              r"|psychiatr|primary care|cancer|mammogra|crisis (line|support|intervention|counseling)|suicide"
+                              r"|health information|wellness (care|services)",
     "Addiction & Recovery": r"addiction|substance|detox|sobriety|harm reduction|recovery (services|support|program)",
-    "Legal & Rights": r"legal (assistance|help|services|screenings?|referrals?|representation|aid|advice|counsel)"
-                      r"|attorney|lawyer|civil rights|know your rights|court advocacy|expunge|record sealing|immigration law",
+    "Legal & Rights": r"(?<!not offer )(?<!not provide )legal (assistance|help|services|screenings?|referrals?|representation"
+                      r"|aid|advice|counsel|protection)|attorney|lawyer|civil rights|know your rights|court advocacy|expunge"
+                      r"|record sealing|immigration (law|cases|matters|applications)|citizenship applications|guardianship",
     "Education": r"college|literacy|\bged\b|\bhse\b|\besol\b|english (classes|lessons)|tutoring|high school"
-                 r"|adult education|education(al)? (services|programs?|classes)|academic",
-    "Employment": r"\bjobs?\b|employ(?!ment authorization)|workforce|career|vocational|resume",
-    "Financial Assistance": r"financial (assistance|literacy|counseling|coaching|help)|benefits (advocacy|assistance|enrollment|screening)"
-                            r"|public benefits|\btax(es)? (preparation|filing|help)|public assistance|cash assistance|\bsnap\b",
-    "Reentry Support": r"re-?entry (services|support|programs?|case management|initiative)|reintegration"
-                       r"|alternatives?[- ]to[- ](detention|incarceration)",
+                 r"|adult education|education(al)? (services|programs?|classes|assistance)|\bclasses\b|\bcourses\b",
+    "Employment": r"\bjobs?\b|employ(?!ment authorization)|workforce|career|vocational|resume|internship",
+    "Financial Assistance": r"financial (assistance|literacy|counseling|coaching|help|aid)"
+                            r"|benefits (advocacy|assistance|enrollment|screening|applications?|counseling)|(apply|applying) for benefits"
+                            r"|help with benefits|public benefits|entitlements|social security|\btax(es)? (preparation|filing|help)"
+                            r"|public assistance|cash assistance|\bsnap\b|stipends?|fare discounts?|\bbond\b|reduced[- ]fare|money management"
+                            r"|disability compensation",
+    "Reentry Support": r"re-?entry (services|support|programs?|case management|initiative)"
+                       r"|alternatives?[- ]to[- ](detention|incarceration|prison)|pre-release|during incarceration",
 }
 POINTER = re.compile(r"\s*See (.+?) listing for (the )?full description", re.I)
 
@@ -145,6 +156,7 @@ def main():
             service_type_extended=extended,
             service_type_extended_source=source,
             service_subtype_extended=subtype,
+            description_keyword_types="",
             description_service_types="",
             description_service_types_source="",
             service_types_all=joined([extended] + org_types.split("; ")),
@@ -156,8 +168,18 @@ def main():
         # but a name found inside another listing's text would get that listing's services.
         texts.append(row["description"] + (" " + own["listing_text"] if own and method != "in_listing_text" else ""))
 
-    # Description tags, only for rows still without a service type (for now).
+    # Description tags, only for rows still without a service type (for now). A row in
+    # reviewed_service_types.csv takes its reviewed types; the keyword types stay alongside.
+    reviewed = {}
+    for rev in load(REVIEWED):
+        row = next((r for r in out if r["resource_id"] == rev["resource_id"]), None)
+        if not row or row["org_name"] != rev["org_name"]:
+            sys.exit(f"{REVIEWED.name}: resource_id {rev['resource_id']} is no longer {rev['org_name']!r}; "
+                     "resources_clean.csv was renumbered, so re-key the table")
+        reviewed[rev["resource_id"]] = rev
     by_org = {norm(r["org_name"]): (r, text) for r, text in zip(out, texts)}
+    # Two passes, so a pointer row reads its target's keyword types and never types the target
+    # got from the review or from the PDF chapter it is printed in.
     for r, text in zip(out, texts):
         if r["service_type_extended"]:
             continue
@@ -165,11 +187,18 @@ def main():
         target = by_org.get(norm(pointer.group(1))) if pointer else None
         if target:
             target_row, target_text = target
-            types = joined("; ".join([target_row["service_types_all"], service_types_in(target_text)]).split("; "))
+            r["description_keyword_types"] = service_types_in(target_text)
             r["description_service_types_source"] = f"pointer:{target_row['resource_id']}"
         else:
-            types = service_types_in(text)
-            r["description_service_types_source"] = "description_keywords" if types else ""
+            r["description_keyword_types"] = service_types_in(text)
+            r["description_service_types_source"] = "description_keywords" if r["description_keyword_types"] else ""
+    for r in out:
+        if r["service_type_extended"]:
+            continue
+        types = r["description_keyword_types"]
+        if r["resource_id"] in reviewed:
+            types = reviewed[r["resource_id"]]["reviewed_service_types"]
+            r["description_service_types_source"] = "reviewed"
         r["description_service_types"] = types
         r["service_types_all"] = joined((r["service_types_all"] + "; " + types).split("; "))
 
@@ -188,6 +217,11 @@ def main():
     for source in ("description_keywords", "pointer"):
         print(f"  description_service_types from {source}: "
               f"{count(lambda r: r['description_service_types'] and r['description_service_types_source'].startswith(source))}")
+    print(f"  description_service_types from reviewed: {count(lambda r: r['description_service_types_source'] == 'reviewed')}")
+    pairs = [(set(filter(None, r["description_keyword_types"].split("; "))), set(filter(None, reviewed[r["resource_id"]]["reviewed_service_types"].split("; "))))
+             for r in out if r["resource_id"] in reviewed]
+    right = sum(len(k & e) for k, e in pairs)
+    print(f"  keyword types vs reviewed: precision {right}/{sum(len(k) for k, _ in pairs)}, recall {right}/{sum(len(e) for _, e in pairs)}")
     print(f"  still no service type at all: {count(lambda r: not r['service_types_all'])}")
     print(f"  pdf_audiences filled: {count(lambda r: r['pdf_audiences'])}")
     print(f"  pdf_contradiction: {count(lambda r: r['pdf_contradiction'])} "
