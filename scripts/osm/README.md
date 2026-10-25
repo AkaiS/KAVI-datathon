@@ -6,12 +6,12 @@ A supplementary layer for the resource map: service locations in NYC that volunt
 clinics and hospitals are left out on purpose.
 
 ```sh
-node scripts/osm_resources_nyc.ts                # writes data/nyc_osm_resources.{csv,geojson}
-python3 -m http.server 8000                      # then open http://localhost:8000/scripts/map.html
+npm run osm      # node scripts/osm/osm_resources_nyc.ts; writes data/nyc_osm_resources.{csv,geojson}
+python3 -m http.server 8000 --bind 127.0.0.1   # from the repo root; then open http://localhost:8000/scripts/osm/map.html
 ```
 
 The script needs Node 22.18 or later and has no dependencies. It runs one query against the free public
-[Overpass API](https://overpass-api.de) and retries with backoff when the server is busy. The map is a
+[Overpass API](https://overpass-api.de) and retries with backoff when the server is busy. The map (`scripts/osm/map.html`) is a
 single HTML file (MapLibre GL + OpenFreeMap tiles). It has to be served over HTTP, not opened as
 a file, because it fetches the GeoJSON.
 
@@ -54,8 +54,3 @@ a phone number or website, and about 10% have opening hours.
 - **Licence.** OSM data is under [ODbL](https://opendatacommons.org/licenses/odbl/): credit
   "© OpenStreetMap contributors" wherever the data is shown. Fixes made on openstreetmap.org
   (every row links to its OSM page) show up the next time the script runs.
-
-## NYPL Connections → GeoJSON
-
-See [nypl_connections.md](nypl_connections.md) for how `data/nypl_connections_resources.geojson`
-is built from the raw Connections Guide CSV.
