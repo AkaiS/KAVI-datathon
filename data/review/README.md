@@ -62,9 +62,8 @@ in PR #16: a type taken from who is served ("homeless youth" is not Housing), fr
 Health & Mental Health); and Financial Assistance missed for benefits help, stipends, bail or reduced fares. Also
 check whether the proposed `Disability Services` type fits.
 
-**Result (Franziska Meyndt, 2026-10-25):** 90 `agree`, 33 `change`. Of the 82 rows Claude had changed, 22 needed
-another change; of the 41 it had left alone, 11 did. `Disability Services` was added in 12 rows. Rows 652 and 653
-(Safe Horizon Streetwork drop-in centers) are marked `change` but have no corrected types yet.
+**Result (Franziska Meyndt, 2026-10-25):** 92 `agree`, 31 `change`. Of the 82 rows Claude had changed, 22 needed
+another change; of the 41 it had left alone, 9 did. `Disability Services` was added in 12 rows.
 
 ## Editing the files
 
