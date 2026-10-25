@@ -52,6 +52,18 @@ notebook reads it on every run, applies it over the rules, and never overwrites 
 `org_name` (must match the id), `human_audiences` (`; `-separated, without `Everyone`), `human_restriction`
 (`restricted`, `open` or `not_stated`), `human_notes`. Blank cells keep the rule-based value.
 
+## Data quality check
+
+```sh
+python3 scripts/audiences/check_audiences.py
+```
+
+Run it from the repo root after the notebook and before every import. It needs only the standard library and
+checks the output in three groups: structure (ids, columns, formats, the values the migration allows), logic (the
+columns agree with each other, e.g. `Everyone` exactly when not restricted, PDF audiences always kept) and content
+(audiences from PDF extraction notes, ambiguous words like "survivors" or "reentry permits", pointer rows, and the
+import's `resource_id` → GeoJSON join). It exits with status 1 when a check fails.
+
 ## Loading into Supabase
 
 1. `supabase db push` applies `supabase/migrations/*_add_audience_columns_to_resources.sql`, which adds the columns
