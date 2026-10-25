@@ -4,8 +4,12 @@
 export const COLUMNS = [
   'id', 'organization_name', 'street_number', 'street', 'address_line_2', 'city', 'state', 'zip_code',
   'phone_number', 'website', 'description', 'spanish_speaking', 'latitude', 'longitude', 'borough', 'row_type',
-  'service_types_all', 'pdf_audiences',
+  'service_types_all', 'pdf_audiences', 'resource_id',
 ].join(',');
+
+// "Who is it for?" columns from scripts/audiences/ (supabase/migrations/*_add_audience_columns_to_resources.sql).
+// Until that migration is applied they don't exist, and the finder falls back to pdf_audiences.
+export const AUDIENCE_COLUMNS = ['audiences_all', 'restricted_audiences', 'focus_audiences'].join(',');
 
 export const BOROUGHS = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island'];
 
@@ -31,10 +35,21 @@ const REMOTE_LABEL = { hotline: 'Hotline', web_only: 'Online', mailing_address: 
 const PAGE = 1000; // Supabase returns at most 1000 rows per request.
 
 // Returns every row of public.resources. Throws the Supabase error object on failure.
+// Asks for the audience columns too, and retries without them while the table doesn't have them yet
+// (Postgres error 42703, undefined column).
 export async function fetchRows(db) {
+  try {
+    return await fetchPages(db, `${COLUMNS},${AUDIENCE_COLUMNS}`);
+  } catch (error) {
+    if (error?.code !== '42703') throw error;
+    return fetchPages(db, COLUMNS);
+  }
+}
+
+async function fetchPages(db, columns) {
   const rows = [];
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await db.from('resources').select(COLUMNS).order('id').range(from, from + PAGE - 1);
+    const { data, error } = await db.from('resources').select(columns).order('id').range(from, from + PAGE - 1);
     if (error) throw error;
     rows.push(...data);
     if (data.length < PAGE) return rows;
@@ -81,7 +96,12 @@ export function toResource(row, index) {
     inPerson,
     remoteLabel: inPerson ? '' : REMOTE_LABEL[row.row_type] ?? 'Phone / online',
     services: row.service_types_all ?? [],
-    audiences: row.pdf_audiences ?? [],
+    // audiences_all ends in 'Everyone' for every resource that isn't restricted to certain people. That is
+    // kept as a flag, not a tile: such a resource matches whichever audience is picked, after the ones
+    // made for or tagged with it (see audienceRank in filter.js).
+    audiences: (row.audiences_all ?? row.pdf_audiences ?? []).filter((a) => a !== 'Everyone'),
+    forEveryone: (row.audiences_all ?? []).includes('Everyone'),
+    madeFor: [...new Set([...(row.restricted_audiences ?? []), ...(row.focus_audiences ?? [])])],
     color: serviceColor(row.service_types_all?.[0]),
     searchText: `${name} ${description}`.toLowerCase(),
   };

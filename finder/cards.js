@@ -21,9 +21,12 @@ function phoneHtml(phone) {
 }
 
 function tagsHtml(r) {
+  const madeFor = r.madeForPicked ?? [];
   return [
+    ...madeFor.map((a) => `<span class="tag who made-for">Made for ${escapeHtml(a)}</span>`),
     ...r.services.map((s) => `<span class="tag"><span class="dot" style="background:${serviceColor(s)}"></span>${escapeHtml(s)}</span>`),
-    ...r.audiences.map((a) => `<span class="tag who">${escapeHtml(a)}</span>`),
+    ...r.audiences.filter((a) => !madeFor.includes(a)).map((a) => `<span class="tag who">${escapeHtml(a)}</span>`),
+    r.forEveryone ? '<span class="tag who open">Open to everyone</span>' : '',
     r.spanish ? '<span class="tag lang">Spanish-speaking</span>' : '',
   ].join('');
 }
