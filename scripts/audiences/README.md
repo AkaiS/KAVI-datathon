@@ -1,5 +1,8 @@
 # Audience enrichment
 
+> **Demo only:** the audience tags come from keyword rules and haven't been reviewed by a person. See
+> [md/audience_matching.md](../../md/audience_matching.md) for how matching works and its limitations.
+
 `audience_enrichment.ipynb` answers the finder's question *"Who is it for?"* for every resource. It reads
 `data/cleaned/resources_extended.csv` and the PDF listing text in `data/extracted/connections_pdf_listings.csv`, and
 writes `data/cleaned/resource_audiences.csv`, one row per `resource_id`, to be joined onto the resource table. It
