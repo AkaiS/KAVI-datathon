@@ -26,8 +26,9 @@ config.js       Supabase URL + publishable key for index.html (committed; browse
 
 | File | What it is | Rows | Source |
 |---|---|---|---|
-| `NYPL Connections Resources.csv` | The Connections Guide extracted from the PDF, one row per resource. This is what the Supabase `resources` table is loaded from. | 760 | Project Google Drive |
-| `NYPLConnections_NoMatch.csv` | Connections Guide rows that could not be geocoded (no usable address, or hotlines). Encoded as Windows-1252, not UTF-8. | 45 | Project Google Drive |
+| `NYPL Connections Resources.csv` | The Connections Guide extracted from the PDF, one row per resource. | 760 | Project Google Drive |
+| `nypl_connections_resources.geojson` | The same 760 rows in the same order, with coordinates and `geocode_*` fields added. This is what the Supabase `resources` table is loaded from. | 760 | `node scripts/nypl_connections_to_geojson.ts`; see [md/nypl_connections.md](md/nypl_connections.md) |
+| `NYPLConnections_NoMatch.csv` | Copies of Connections Guide rows that could not be geocoded (no usable address, or hotlines), with `lat`/`lon` added for 5 NYC NEON clothing closet sites. The import adds those 5 as extra rows; the other 40 are already in the GeoJSON. Encoded as Windows-1252, not UTF-8. | 45 | Project Google Drive |
 | `nyc_osm_resources.csv` / `.geojson` | NYC service locations from OpenStreetMap, with category, borough and coordinates. Credit "© OpenStreetMap contributors" wherever it is shown. | 1,104 | `npm run osm`; see [scripts/osm/README.md](scripts/osm/README.md) |
 
 The originals, including the Connections Guide PDF, are in the [project Google Drive folder](https://drive.google.com/drive/folders/1f5QhMlY8pYgyomWSzPgYTBdnUUcBbUJS).
@@ -43,7 +44,7 @@ The geocoded layers are published on ArcGIS Online as hosted feature layers. Sha
 
 ### 3. Supabase database
 
-The Connections Guide is loaded into the `resources` table of a Supabase project in the **KAVI** Supabase organization. Its columns match `NYPL Connections Resources.csv` (see [supabase/migrations/](supabase/migrations)).
+The Connections Guide is loaded into the `resources` table of a Supabase project in the **KAVI** Supabase organization. It has one column per column of `NYPL Connections Resources.csv`, plus `latitude`, `longitude`, `geocode_match`, `geocode_source`, `geocode_matched_address` and `geocode_review` from the GeoJSON (see [supabase/migrations/](supabase/migrations)). It holds 765 rows: the 760 GeoJSON rows plus the 5 NEON sites.
 
 **Getting access.**
 
@@ -62,7 +63,7 @@ The Connections Guide is loaded into the `resources` table of a Supabase project
 curl "https://xwpuphhocwstfgbjreeg.supabase.co/rest/v1/resources?category=eq.Housing&select=organization_name,phone_number" -H "apikey: <SUPABASE_PUBLISHABLE_KEY from config.js>"
 ```
 
-**Loading data:** `npm run import` loads `data/NYPL Connections Resources.csv` into the project in `config.js`, using `SUPABASE_SECRET_KEY` from `.env`. Add `-- --dry-run` to check the file first, or `-- --replace` to re-import. For a new project: `supabase link --project-ref <ref>`, `supabase db push`, update `config.js`, then import.
+**Loading data:** `npm run import` loads `data/nypl_connections_resources.geojson` and the 5 located rows of `data/NYPLConnections_NoMatch.csv` into the project in `config.js`, using `SUPABASE_SECRET_KEY` from `.env`. Add `-- --dry-run` to check the file first, or `-- --replace` to re-import. In a git worktree, run `node scripts/database/link-main-env.mjs` first to use the main checkout's `.env`. For a new project: `supabase link --project-ref <ref>`, `supabase db push`, update `config.js`, then import.
 
 ## Running the resource directory page
 

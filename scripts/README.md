@@ -4,7 +4,8 @@ Scripts are grouped by what they work on. Run them from the repo root. All of th
 
 | Folder | Script | What it does | Run with |
 |---|---|---|---|
-| `database/` | `import-csv.mjs` | Loads `data/NYPL Connections Resources.csv` into the Supabase `resources` table of the project in `config.js`. Needs `SUPABASE_SECRET_KEY` in `.env`. `--dry-run` checks the file without inserting; `--replace` deletes the existing rows first. | `npm run import -- --dry-run` |
+| `database/` | `import-resources.mjs` | Loads `data/nypl_connections_resources.geojson` (every row of the Connections Guide CSV plus coordinates) and the rows of `data/NYPLConnections_NoMatch.csv` that have `lat`/`lon` into the Supabase `resources` table of the project in `config.js`. Needs `SUPABASE_SECRET_KEY` in `.env`. `--dry-run` checks the file without inserting; `--replace` deletes the existing rows first. | `npm run import -- --dry-run` |
+| `database/` | `link-main-env.mjs` | In a git worktree, makes `.env` a symlink to the main checkout's `.env`, so the import can use its `SUPABASE_SECRET_KEY`. Refuses to replace an existing `.env`. | `node scripts/database/link-main-env.mjs` |
 | `web/` | `dev.mjs` | Serves the repo as static files on http://localhost:5173 (`index.html`, `scripts/osm/map.html`), reachable from this computer only. Never serves dotfiles such as `.env`. | `npm run dev` |
 | `osm/` | `osm_resources_nyc.ts` | Downloads NYC service locations from OpenStreetMap into `data/nyc_osm_resources.csv` and `.geojson`. | `npm run osm` |
 | `osm/` | `map.html` | Map preview of the OSM layer. | see [`osm/README.md`](osm/README.md) |
