@@ -45,6 +45,23 @@ When a user picks an audience, e.g. *Youth*: first resources made for youth (res
 then other resources tagged *Youth*, then resources tagged *Everyone*. Resources restricted to other groups are left
 out. `rank_for()` in the notebook is the reference for the finder's filter.
 
+## Manual decisions
+
+`reviewed_audiences.csv` (in this folder) holds decisions for single rows that no pattern can capture. The
+notebook reads it on every run, applies it over the rules, and never overwrites it. Columns: `resource_id`,
+`org_name` (must match the id), `human_audiences` (`; `-separated, without `Everyone`), `human_restriction`
+(`restricted`, `open` or `not_stated`), `human_notes`. Blank cells keep the rule-based value.
+
+## Loading into Supabase
+
+1. `supabase db push` applies `supabase/migrations/*_add_audience_columns_to_resources.sql`, which adds the columns
+   above (lists as `text[]`, plus a GIN index on `audiences_all`).
+2. `npm run import -- --replace` reads `data/cleaned/resource_audiences.csv` next to `resources_extended.csv` and
+   joins it by `resource_id` (see `AUDIENCE_COLUMNS` in `scripts/database/import-resources.mjs`).
+
+For the finder, `finder/resources.js` would read `audiences_all` in place of `pdf_audiences`, and `finder/filter.js`
+would apply the ranking above: a resource matches a chosen audience when `audiences_all` contains it or `Everyone`.
+
 ## Status
 
 Third version of the rules, not reviewed yet. Two files in `data/review/` support the manual check:
