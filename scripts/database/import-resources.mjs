@@ -208,6 +208,39 @@ extendedRows.forEach((cells, i) => {
 });
 const unmatchedFeatures = geojsonRecords.filter((r) => r.resource_id === null).length;
 
+// --- Audience CSV: "Who is it for?" columns, joined by resource_id like the extended CSV ---
+// (see scripts/audiences/README.md and supabase/migrations/*_add_audience_columns_to_resources.sql).
+
+const AUDIENCES_PATH = join(root, 'data', 'cleaned', 'resource_audiences.csv');
+const AUDIENCE_COLUMNS = {
+  audiences_all: 'list',
+  restricted_audiences: 'list',
+  focus_audiences: 'list',
+  confirmed_pdf_audiences: 'list',
+  unconfirmed_pdf_audiences: 'list',
+  pdf_audience_check: 'text',
+  audience_restriction: 'text',
+  restriction_evidence: 'text',
+  everyone_basis: 'text',
+  audience_needs_review: 'boolean',
+  audience_reviewed: 'boolean',
+};
+
+const [audienceHeaders, ...audienceRows] = parseCsv(await readFile(AUDIENCES_PATH, 'utf8'));
+const missingAudience = Object.keys(AUDIENCE_COLUMNS).filter((c) => !audienceHeaders.includes(c));
+if (missingAudience.length) throw new Error(`${AUDIENCES_PATH}: missing columns ${missingAudience.join(', ')}`);
+
+const emptyAudience = Object.fromEntries(Object.keys(AUDIENCE_COLUMNS).map((c) => [c, null]));
+for (const record of geojsonRecords) Object.assign(record, emptyAudience);
+
+audienceRows.forEach((cells, i) => {
+  const where = `${AUDIENCES_PATH} line ${i + 2}`;
+  const row = Object.fromEntries(audienceHeaders.map((h, j) => [h, cells[j] ?? '']));
+  const record = geojsonRecords.find((r) => r.resource_id === Number(row.resource_id));
+  if (!record) throw new Error(`${where}: resource_id ${row.resource_id} is not in ${EXTENDED_PATH}`);
+  for (const [column, type] of Object.entries(AUDIENCE_COLUMNS)) record[column] = toExtendedValue(row[column], type, column, where);
+});
+
 // --- NoMatch CSV: extra rows for the entries that have coordinates ---
 
 // The file is Windows-1252, not UTF-8 (its dashes are byte 0x97). Its header repeats City and
@@ -269,6 +302,7 @@ const records = geojsonRecords.flatMap((record, i) => [record, ...extras.filter(
 console.log(`Read ${geojsonRecords.length} rows from ${GEOJSON_PATH}`);
 console.log(`Read ${extras.length} extra rows with coordinates from ${NOMATCH_PATH}`);
 console.log(`Read ${extendedRows.length} rows from ${EXTENDED_PATH}; ${unmatchedFeatures} GeoJSON rows have no extended row`);
+console.log(`Read ${audienceRows.length} rows from ${AUDIENCES_PATH}`);
 console.log(`Total: ${records.length} rows, ${records.filter((r) => r.latitude !== null).length} with coordinates`);
 for (const column of Object.values(YES_NO_COLUMNS)) {
   const yes = records.filter((r) => r[column] === true).length;
