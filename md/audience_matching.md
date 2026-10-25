@@ -66,7 +66,7 @@ them in the browser. Nothing is written.
 - **Source text quality.** 49 descriptions still contain PDF extraction notes; matching ignores them, but they are
   not cleaned up.
 - **New categories are proposals:** *Disability Services* (service type, from #17), *Survivors of violence* and
-  *People without homes* (audiences), and the violence category in upstream issue #18 still need the team's OK.
+  *People without homes* (audiences), and the violence category in issue dssg-nyc/KAVI-datathon#18 still need the team's OK.
 
 ## Next steps
 
