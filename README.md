@@ -97,6 +97,29 @@ How `public.resources` columns are used:
 
 The map tiles come from OpenFreeMap. Every pin and every count comes from `public.resources`, and nothing is inferred from descriptions. The filtering logic in `finder/filter.js` is tested by `node --test scripts/tests/finder_filter.test.mjs`.
 
+## Reachability prototype (throwaway)
+
+`reach-prototype.html` answers one question: can a client reach each resource within a time limit, given the transport they have? It is a prototype to test whether the idea works, not part of the finder.
+
+**Launch it.** Same server as the finder, no extra setup:
+
+```bash
+npm run dev
+```
+
+Then open http://localhost:5173/reach-prototype.html. Enter the client's address (or click the map), pick a time limit (15–90 min), tick what they can use (wheelchair, local bus, subway, express bus) and the number of transfers. The list shows every reachable in-person resource with its estimated minutes and directions; click one to draw the trip on the map. The "Assumptions" panel lets you change speeds and waits and see the results update.
+
+**How it estimates.** No schedules. Ride time is distance along the route's stops divided by an average speed (bus 12 km/h, subway 27 km/h) plus a fixed wait per boarding (bus 8 min, subway 5 min). On-foot legs are straight-line distance × 1.3. A wheelchair user can only board or get off at accessible stops: every bus stop, and subway platforms with ADA access in that direction (MTA Subway Stations dataset). The shaded walking area comes from the public Valhalla server. The stops and routes are in `data/prototype/reach_transit_PROTOTYPE.json`, rebuilt with `python3 scripts/prototype/build_reach_transit.py` from MTA GTFS.
+
+**Not done yet:**
+- **Accuracy is unchecked.** Eight test trips and their prototype times are in [`md/reach_prototype_spot_check.md`](md/reach_prototype_spot_check.md); the MTA trip planner times to compare against are not filled in.
+- **Elevator outages are ignored.** A station counts as accessible even when its elevator is out.
+- **Time of day is ignored.** Rush hour, nights and weekends get the same speeds and waits.
+- **Transfers between subway lines are approximate.** Any two platforms within 250 m count as a transfer; a wheelchair transfer only requires both platforms to be accessible.
+- **No fares.** Express buses can be excluded, but cost is not otherwise considered.
+- **Nothing is stored.** Every search runs in the browser; no columns or tables were added to Supabase.
+- **It depends on a public server.** The walking area uses valhalla1.openstreetmap.de, which has a fair-use policy. Without it the page falls back to straight-line estimates.
+
 ## Scripts
 
 See [scripts/README.md](scripts/README.md) for what each script does and how to run it.
