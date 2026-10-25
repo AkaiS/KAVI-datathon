@@ -44,7 +44,7 @@ The geocoded layers are published on ArcGIS Online as hosted feature layers. Sha
 
 ### 3. Supabase database
 
-The Connections Guide is loaded into the `resources` table of a Supabase project in the **KAVI** Supabase organization. It has one column per column of `NYPL Connections Resources.csv`, plus `latitude`, `longitude`, `geocode_match`, `geocode_source`, `geocode_matched_address` and `geocode_review` from the GeoJSON (see [supabase/migrations/](supabase/migrations)). It holds 765 rows: the 760 GeoJSON rows plus the 5 NEON sites.
+The Connections Guide is loaded into the `resources` table of a Supabase project in the **KAVI** Supabase organization. It has one column per column of `NYPL Connections Resources.csv`, plus `latitude`, `longitude`, `geocode_match`, `geocode_source`, `geocode_matched_address` and `geocode_review` from the GeoJSON, plus the service type, row type, borough and PDF columns of `data/cleaned/resources_extended.csv` under the same names (see [supabase/migrations/](supabase/migrations)). Multi-label columns such as `service_types_all` are `text[]`, so a filter like `service_types_all=cs.{Housing}` finds every organization that offers housing. It holds 765 rows: the 760 GeoJSON rows plus the 5 NEON sites.
 
 **Getting access.**
 
@@ -63,7 +63,7 @@ The Connections Guide is loaded into the `resources` table of a Supabase project
 curl "https://xwpuphhocwstfgbjreeg.supabase.co/rest/v1/resources?category=eq.Housing&select=organization_name,phone_number" -H "apikey: <SUPABASE_PUBLISHABLE_KEY from config.js>"
 ```
 
-**Loading data:** `npm run import` loads `data/nypl_connections_resources.geojson` and the 5 located rows of `data/NYPLConnections_NoMatch.csv` into the project in `config.js`, using `SUPABASE_SECRET_KEY` from `.env`. Add `-- --dry-run` to check the file first, or `-- --replace` to re-import. In a git worktree, run `node scripts/database/link-main-env.mjs` first to use the main checkout's `.env`. For a new project: `supabase link --project-ref <ref>`, `supabase db push`, update `config.js`, then import.
+**Loading data:** `npm run import` loads `data/nypl_connections_resources.geojson`, the 5 located rows of `data/NYPLConnections_NoMatch.csv` and the columns of `data/cleaned/resources_extended.csv` into the project in `config.js`, using `SUPABASE_SECRET_KEY` from `.env`. Add `-- --dry-run` to check the file first, or `-- --replace` to re-import. In a git worktree, run `node scripts/database/link-main-env.mjs` first to use the main checkout's `.env`. For a new project: `supabase link --project-ref <ref>`, `supabase db push`, update `config.js`, then import.
 
 ## Running the resource directory page
 

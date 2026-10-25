@@ -10,6 +10,10 @@
 //                                       inserted after the GeoJSON row with the same organization
 //                                       name and copying that row's fields except the address.
 //                                       Today that is the 5 NYC NEON clothing closet sites.
+//   cleaned/resources_extended.csv      the cleaned rows with service types, row types and PDF
+//                                       fields (scripts/cleaning/, scripts/pdf/). Its columns in
+//                                       EXTENDED_COLUMNS are added to the GeoJSON row it was
+//                                       cleaned from; NoMatch extra rows copy their parent's.
 //
 // Usage:
 //   node scripts/database/import-resources.mjs [--dry-run] [--replace]
@@ -23,6 +27,7 @@ import { join, resolve } from 'node:path';
 const root = resolve(import.meta.dirname, '..', '..');
 const GEOJSON_PATH = join(root, 'data', 'nypl_connections_resources.geojson');
 const NOMATCH_PATH = join(root, 'data', 'NYPLConnections_NoMatch.csv');
+const EXTENDED_PATH = join(root, 'data', 'cleaned', 'resources_extended.csv');
 
 // CSV header (a GeoJSON property name) -> public.resources column
 // (see supabase/migrations/*_reshape_resources_to_match_csv.sql).
@@ -55,6 +60,46 @@ const GEOCODE_COLUMNS = {
   'geocode_matched_address': 'geocode_matched_address',
   'geocode_review': 'geocode_review',
 };
+// resources_extended.csv column -> type of the public.resources column with the same name
+// (see supabase/migrations/*_add_cleaned_and_pdf_columns_to_resources.sql).
+// 'list' cells are "; "-separated and become text[].
+const EXTENDED_COLUMNS = {
+  resource_id: 'integer',
+  service_type: 'text',
+  service_type_suggested: 'list',
+  borough: 'text',
+  row_type: 'text',
+  service_type_source: 'text',
+  service_type_confidence: 'text',
+  organization_service_types: 'list',
+  service_type_conflict: 'boolean',
+  needs_review: 'boolean',
+  review_notes: 'text',
+  pdf_match_method: 'text',
+  pdf_listing_id: 'integer',
+  pdf_chapter: 'text',
+  pdf_section: 'text',
+  pdf_preceding_subheading: 'text',
+  pdf_guide_page: 'integer',
+  pdf_is_cross_reference: 'boolean',
+  pdf_section_service_type: 'text',
+  pdf_appearances: 'list',
+  pdf_org_service_types: 'list',
+  pdf_audiences: 'list',
+  service_type_extended: 'text',
+  service_type_extended_source: 'text',
+  service_subtype_extended: 'text',
+  description_keyword_types: 'list',
+  description_service_types: 'list',
+  description_service_types_source: 'text',
+  service_types_all: 'list',
+  pdf_contradiction: 'text',
+  needs_review_extended: 'boolean',
+  review_notes_extended: 'text',
+};
+// The cleaning notebook merged GeoJSON feature 690 (no organization name; extra text for the row
+// above) into resource_id 690, so resource_id N is feature N-1 up to 690 and feature N after it.
+const MERGED_FEATURE_INDEX = 690;
 const BATCH_SIZE = 500;
 
 const args = process.argv.slice(2);
@@ -124,6 +169,45 @@ const geojsonRecords = geojson.features.map((feature, i) => {
   return record;
 });
 
+// --- Extended CSV: new columns for the GeoJSON row each cleaned row came from ---
+
+function toExtendedValue(value, type, column, where) {
+  const v = value.trim();
+  if (v === '') return null;
+  if (type === 'text') return v;
+  if (type === 'list') return v.split(';').map((s) => s.trim()).filter(Boolean);
+  if (type === 'integer') {
+    if (!/^\d+$/.test(v)) throw new Error(`${where}: ${column} must be an integer, got "${value}"`);
+    return Number(v);
+  }
+  if (v === 'True') return true;
+  if (v === 'False') return false;
+  throw new Error(`${where}: ${column} must be True, False or blank, got "${value}"`);
+}
+
+const [extendedHeaders, ...extendedRows] = parseCsv(await readFile(EXTENDED_PATH, 'utf8'));
+const missingExtended = Object.keys(EXTENDED_COLUMNS).filter((c) => !extendedHeaders.includes(c));
+if (missingExtended.length) throw new Error(`${EXTENDED_PATH}: missing columns ${missingExtended.join(', ')}`);
+
+const emptyExtended = Object.fromEntries(Object.keys(EXTENDED_COLUMNS).map((c) => [c, null]));
+for (const record of geojsonRecords) Object.assign(record, emptyExtended);
+
+const normalizeName = (name) => (name ?? '').trim().toLowerCase();
+extendedRows.forEach((cells, i) => {
+  const where = `${EXTENDED_PATH} line ${i + 2}`;
+  const row = Object.fromEntries(extendedHeaders.map((h, j) => [h, cells[j] ?? '']));
+  const resourceId = Number(row.resource_id);
+  const featureIndex = resourceId <= MERGED_FEATURE_INDEX ? resourceId - 1 : resourceId;
+  const record = geojsonRecords[featureIndex];
+  if (!record) throw new Error(`${where}: resource_id ${resourceId} has no GeoJSON feature`);
+  // The notebook fills in some blank names, so only a name that is set on both sides must agree.
+  if (record.organization_name && normalizeName(record.organization_name) !== normalizeName(row.org_name)) {
+    throw new Error(`${where}: org_name "${row.org_name}" does not match feature ${featureIndex} "${record.organization_name}"`);
+  }
+  for (const [column, type] of Object.entries(EXTENDED_COLUMNS)) record[column] = toExtendedValue(row[column], type, column, where);
+});
+const unmatchedFeatures = geojsonRecords.filter((r) => r.resource_id === null).length;
+
 // --- NoMatch CSV: extra rows for the entries that have coordinates ---
 
 // The file is Windows-1252, not UTF-8 (its dashes are byte 0x97). Its header repeats City and
@@ -131,6 +215,7 @@ const geojsonRecords = geojson.features.map((feature, i) => {
 // positions 10-26 are the same columns as the main CSV.
 const NOMATCH = { place: 0, address2: 1, city: 4, state: 6, zip: 7, organizationName: 10, lat: 28, lon: 29 };
 const NOMATCH_HEADER_COUNT = 30;
+const BOROUGH_BY_CITY = { 'New York': 'Manhattan', Brooklyn: 'Brooklyn', Bronx: 'Bronx', Queens: 'Queens', 'Staten Island': 'Staten Island' };
 
 const [nomatchHeaders, ...nomatchRows] = parseCsv(new TextDecoder('windows-1252').decode(await readFile(NOMATCH_PATH)));
 if (nomatchHeaders.length !== NOMATCH_HEADER_COUNT || nomatchHeaders[NOMATCH.lat] !== 'lat' || nomatchHeaders[NOMATCH.lon] !== 'lon') {
@@ -152,12 +237,19 @@ nomatchRows.forEach((cells, i) => {
   // "162-24 Jamaica Avenue" -> street_number "162-24", street "Jamaica Avenue".
   const place = cells[NOMATCH.place].trim();
   const [, streetNumber = null, street = place] = place.match(/^(\S*\d\S*)\s+(.+)$/) ?? [];
+  // The parent row is the phone listing, so its row_type and borough do not describe this address.
+  // Every extra row so far is a street address in NYC: the notebook's rules make that 'mapped'.
+  const city = toText(cells[NOMATCH.city]);
+  const borough = BOROUGH_BY_CITY[city];
+  if (!borough) throw new Error(`${where}: city "${city}" is not in BOROUGH_BY_CITY`);
   const record = {
     ...geojsonRecords[parentIndex],
     street_number: streetNumber,
     address_line_2: toText(cells[NOMATCH.address2]),
     street,
-    city: toText(cells[NOMATCH.city]),
+    city,
+    borough,
+    row_type: 'mapped',
     state: toText(cells[NOMATCH.state]),
     zip_code: toText(cells[NOMATCH.zip]),
     latitude,
@@ -176,13 +268,14 @@ const records = geojsonRecords.flatMap((record, i) => [record, ...extras.filter(
 
 console.log(`Read ${geojsonRecords.length} rows from ${GEOJSON_PATH}`);
 console.log(`Read ${extras.length} extra rows with coordinates from ${NOMATCH_PATH}`);
+console.log(`Read ${extendedRows.length} rows from ${EXTENDED_PATH}; ${unmatchedFeatures} GeoJSON rows have no extended row`);
 console.log(`Total: ${records.length} rows, ${records.filter((r) => r.latitude !== null).length} with coordinates`);
 for (const column of Object.values(YES_NO_COLUMNS)) {
   const yes = records.filter((r) => r[column] === true).length;
   const no = records.filter((r) => r[column] === false).length;
   console.log(`  ${column}: ${yes} Y, ${no} N, ${records.length - yes - no} blank`);
 }
-for (const column of ['geocode_match', 'geocode_source']) {
+for (const column of ['geocode_match', 'geocode_source', 'row_type', 'borough']) {
   const counts = Object.groupBy(records, (r) => r[column] ?? 'null');
   console.log(`  ${column}: ${Object.entries(counts).map(([k, v]) => `${v.length} ${k}`).join(', ')}`);
 }
